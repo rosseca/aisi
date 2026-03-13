@@ -58,3 +58,4 @@ mem.prof
 
 # Binary output (root only, not cmd/aisi/)
 /aisi
+.cursor

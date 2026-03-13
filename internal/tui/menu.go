@@ -11,6 +11,8 @@ type MenuOption int
 
 const (
 	MenuBrowseInstall MenuOption = iota
+	MenuInstallFromURL
+	MenuFindSkill
 	MenuViewInstalled
 	MenuUpdateAll
 	MenuSwitchTarget
@@ -28,8 +30,10 @@ type MainMenu struct {
 func NewMainMenu(target string) *MainMenu {
 	return &MainMenu{
 		choices: []string{
-			"Browse & Install Assets",
-			"View Installed",
+		"Browse & Install Assets",
+		"Install Skill from Repository",
+		"Find Skills Online (skills.sh)",
+		"View Installed",
 			"Update All",
 			"Switch Target",
 			"Settings",

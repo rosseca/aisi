@@ -9,7 +9,7 @@ AISI is a CLI that manages AI agent resources (rules, skills, subagents, hooks, 
 
 ## Table of Contents
 
-- [Installation](#installation)
+- [Installing AISI](#installing-aisi)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
 - [Commands](#commands)
@@ -20,19 +20,31 @@ AISI is a CLI that manages AI agent resources (rules, skills, subagents, hooks, 
 
 ---
 
-## Installation
+## Installing AISI
 
-### From Go (recommended)
+### Homebrew (recommended for macOS)
+
+```bash
+# Add the tap
+brew tap rosseca/tap
+
+# Install aisi
+brew install aisi
+```
+
+### From Go
 
 ```bash
 go install github.com/rosseca/aisi/cmd/aisi@latest
 ```
 
-### From releases
+Make sure `$GOPATH/bin` (usually `~/go/bin`) is in your PATH.
 
-Download the binary for your platform from [Releases](../../releases).
+### From GitHub Releases
 
-### Local build
+Download the binary for your platform from [Releases](../../releases) and place it in a directory in your PATH.
+
+### Build from source
 
 ```bash
 git clone https://github.com/rosseca/aisi.git
@@ -127,6 +139,55 @@ aisi  # No arguments → interactive interface
 | `--target=TARGET` | Override target (cursor, kilo, junie, windsurf) |
 | `--repo=URL` | Override repo for this execution |
 | `--force` | Force reinstall even if up to date |
+
+### Installing Skills from External Repositories
+
+You can install skills directly from any Git repository without needing to define them in your manifest first.
+
+**From GitHub (shorthand):**
+
+```bash
+aisi install skill --url twostraws/swiftui-agent-skill
+```
+
+**From a specific path in the repo:**
+
+```bash
+aisi install skill --url https://github.com/twostraws/swiftui-agent-skill/tree/main/swiftui-pro
+```
+
+**With a custom name:**
+
+```bash
+aisi install skill --url twostraws/swiftui-agent-skill --name swiftui-pro
+```
+
+**Alternative methods:**
+
+```bash
+# Full GitHub URL
+aisi install skill --url https://github.com/vercel-labs/agent-skills
+
+# GitLab
+aisi install skill --url https://gitlab.com/org/repo
+
+# SSH
+aisi install skill --url git@github.com:owner/repo.git
+
+# Local path
+aisi install skill --url ./my-local-skills
+```
+
+### Supported URL Formats
+
+| Format | Example |
+|--------|---------|
+| GitHub shorthand | `owner/repo` |
+| GitHub HTTPS | `https://github.com/owner/repo` |
+| GitHub tree/blob | `https://github.com/owner/repo/tree/main/skills/foo` |
+| GitLab HTTPS | `https://gitlab.com/org/repo` |
+| SSH | `git@github.com:owner/repo.git` |
+| Local path | `./path/to/skill` or `/absolute/path` |
 
 ---
 

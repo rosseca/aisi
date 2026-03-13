@@ -10,6 +10,7 @@ import (
 	"github.com/rosseca/aisi/internal/config"
 	"github.com/rosseca/aisi/internal/installer"
 	"github.com/rosseca/aisi/internal/manifest"
+	"github.com/rosseca/aisi/internal/registry"
 	"github.com/rosseca/aisi/internal/repo"
 	"github.com/rosseca/aisi/internal/targets"
 	"github.com/rosseca/aisi/internal/tracker"
@@ -25,7 +26,10 @@ const (
 	StateBrowser
 	StateInstalled
 	StateInstalledBrowser
-	StateMCPEnvForm // Form for collecting MCP environment variables
+	StateMCPEnvForm   // Form for collecting MCP environment variables
+	StateSkillURLForm // Form for installing skills from URL
+	StateFindSkill    // Search for skills in the registry
+	StateSkillDetail  // Show skill details before installing
 	StateSettings
 	StateSwitchTarget
 	StateLoading
@@ -46,6 +50,8 @@ type App struct {
 	browser          *Browser
 	installedBrowser *InstalledBrowser
 	mcpEnvForm       *MCPEnvForm
+	skillFinder      *SkillFinder
+	skillDetail      *SkillDetail
 	cfg              *config.Config
 	target           *targets.Target
 	repoMgr          *repo.Manager
@@ -74,6 +80,14 @@ type App struct {
 
 	// Pending MCP installation
 	pendingMCPItems []AssetItem // Items waiting to be installed after env form
+
+	// Skill URL form input
+	skillURLInput        string
+	skillURLInputCursor  int
+	skillURLError        string
+	skillNameInput       string
+	skillNameInputCursor int
+	skillURLActiveInput  int // 0 = URL, 1 = Name
 }
 
 func NewApp(cfg *config.Config, target *targets.Target, projectRoot string, configExists bool) *App {
@@ -186,6 +200,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case StateRepoSetup:
 			return a.handleRepoSetupInput(msg)
 
+		case StateSkillURLForm:
+			return a.handleSkillURLInput(msg)
+
 		case StateVersionError:
 			// Only allow 'q' or 'ctrl+c' to quit when version is outdated
 			if msg.String() == "q" || msg.Type == tea.KeyCtrlC {
@@ -239,6 +256,40 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case InstalledBrowserDoneMsg:
 		a.state = StateMainMenu
+		return a, nil
+
+	case SkillFinderDoneMsg:
+		a.state = StateMainMenu
+		a.skillFinder = nil
+		return a, nil
+
+	case SkillSelectedMsg:
+		// Show skill detail view before installing
+		a.skillDetail = NewSkillDetail(msg.Skill)
+		a.skillDetail.SetSize(a.width, a.height)
+		a.state = StateSkillDetail
+		return a, a.skillDetail.Init()
+
+	case SkillDetailDoneMsg:
+		if msg.Confirmed {
+			// Install the selected skill from registry
+			a.state = StateInstalling
+			a.installMsg = fmt.Sprintf("Installing %s...", msg.Skill.Name)
+			a.installTotal = 1
+			a.installDone = 0
+			return a, tea.Batch(
+				a.spinner.Tick,
+				a.handleRegistrySkillInstall(msg.Skill),
+			)
+		}
+		// Cancelled, go back to skill finder
+		a.state = StateFindSkill
+		a.skillDetail = nil
+		return a, nil
+
+	case SkillInstallErrorMsg:
+		a.err = msg.Err
+		a.state = StateError
 		return a, nil
 
 	case InstallRequestMsg:
@@ -340,6 +391,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 
+	case StateFindSkill:
+		if a.skillFinder != nil {
+			newFinder, cmd := a.skillFinder.Update(msg)
+			a.skillFinder = newFinder.(*SkillFinder)
+			return a, cmd
+		}
+
+	case StateSkillDetail:
+		if a.skillDetail != nil {
+			newDetail, cmd := a.skillDetail.Update(msg)
+			a.skillDetail = newDetail.(*SkillDetail)
+			return a, cmd
+		}
+
 	case StateSwitchTarget:
 		return a.updateTargetSwitcher(msg)
 	}
@@ -358,6 +423,22 @@ func (a *App) handleMenuSelection(option MenuOption) (tea.Model, tea.Cmd) {
 		a.browser.SetSize(a.width, a.height)
 		a.state = StateBrowser
 		return a, a.browser.Init()
+
+	case MenuInstallFromURL:
+		a.skillURLInput = ""
+		a.skillURLInputCursor = 0
+		a.skillURLError = ""
+		a.skillNameInput = ""
+		a.skillNameInputCursor = 0
+		a.skillURLActiveInput = 0
+		a.state = StateSkillURLForm
+		return a, nil
+
+	case MenuFindSkill:
+		a.skillFinder = NewSkillFinder()
+		a.skillFinder.SetSize(a.width, a.height)
+		a.state = StateFindSkill
+		return a, a.skillFinder.Init()
 
 	case MenuViewInstalled:
 		track := tracker.New(a.projectRoot, a.target)
@@ -396,10 +477,7 @@ func (a *App) updateTargetSwitcher(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "3":
 			t, _ := targets.Get("junie")
 			return a, func() tea.Msg { return TargetSwitchedMsg{Target: t} }
-		case "4":
-			t, _ := targets.Get("windsurf")
-			return a, func() tea.Msg { return TargetSwitchedMsg{Target: t} }
-		case "esc", "q":
+			case "esc", "q":
 			a.state = StateMainMenu
 		}
 	}
@@ -431,6 +509,19 @@ func (a *App) View() string {
 		if a.mcpEnvForm != nil {
 			return a.mcpEnvForm.View()
 		}
+
+	case StateFindSkill:
+		if a.skillFinder != nil {
+			return a.skillFinder.View()
+		}
+
+	case StateSkillDetail:
+		if a.skillDetail != nil {
+			return a.skillDetail.View()
+		}
+
+	case StateSkillURLForm:
+		return a.renderSkillURLForm()
 
 	case StateSwitchTarget:
 		return a.renderTargetSwitcher()
@@ -643,10 +734,9 @@ func (a *App) renderTargetSwitcher() string {
   [1] Cursor
   [2] Kilo Code
   [3] Junie (JetBrains)
-  [4] Windsurf
 
 %s
-`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), helpStyle.Render("1-4: Select • Esc: Back"))
+`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), helpStyle.Render("1-3: Select • Esc: Back"))
 }
 
 
@@ -691,13 +781,30 @@ func (a *App) renderError() string {
 	if a.err != nil {
 		errMsg = a.err.Error()
 	}
+
+	// Check if this is a private repo error for better formatting
+	if strings.Contains(errMsg, "private or deleted repository") {
+		return fmt.Sprintf(`
+|%s
+|
+|  %s
+|
+|  %s
+|
+|%s
+|`, renderTitleWithRepo(a.target.DisplayName, a.repoSource),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("⚠️  Installation Failed"),
+			errMsg,
+			helpStyle.Render("Esc: Back to menu • q: Quit"))
+	}
+
 	return fmt.Sprintf(`
-%s
-
-  %s
-
-%s
-`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), errorStyle.Render("Error: "+errMsg), helpStyle.Render("Esc: Back • q: Quit"))
+|%s
+|
+|  %s
+|
+|%s
+|`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), errorStyle.Render("Error: "+errMsg), helpStyle.Render("Esc: Back • q: Quit"))
 }
 
 func (a *App) renderVersionError() string {
@@ -768,6 +875,10 @@ type InstallCompletedMsg struct {
 type UninstallCompletedMsg struct {
 	SuccessCount int
 	Errors       []string
+}
+
+type SkillInstallErrorMsg struct {
+	Err error
 }
 
 func (a *App) handleUninstall(items []InstalledItem) tea.Cmd {
@@ -912,6 +1023,350 @@ func (a *App) handleMCPInstall(mcp *manifest.MCP, envVars map[string]installer.E
 		return InstallCompletedMsg{
 			SuccessCount: successCount,
 			Errors:       errors,
+		}
+	}
+}
+
+func (a *App) handleSkillURLInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEnter:
+		// Validate and install
+		if a.skillURLInput == "" {
+			a.skillURLError = "Repository URL cannot be empty"
+			return a, nil
+		}
+
+		// Parse URL
+		skillURL, err := repo.ParseSkillURL(a.skillURLInput)
+		if err != nil {
+			a.skillURLError = fmt.Sprintf("Invalid URL: %v", err)
+			return a, nil
+		}
+
+		// Start installation
+		a.state = StateInstalling
+		a.installMsg = fmt.Sprintf("Installing skill from %s...", a.skillURLInput)
+		a.installTotal = 1
+		a.installDone = 0
+
+		return a, tea.Batch(
+			a.spinner.Tick,
+			a.handleSkillURLInstall(skillURL, a.skillNameInput),
+		)
+
+	case tea.KeyTab:
+		// Switch between URL and name inputs
+		a.skillURLActiveInput = (a.skillURLActiveInput + 1) % 2
+		return a, nil
+
+	case tea.KeyBackspace:
+		if a.skillURLActiveInput == 0 {
+			if len(a.skillURLInput) > 0 && a.skillURLInputCursor > 0 {
+				a.skillURLInput = a.skillURLInput[:a.skillURLInputCursor-1] + a.skillURLInput[a.skillURLInputCursor:]
+				a.skillURLInputCursor--
+			}
+		} else {
+			if len(a.skillNameInput) > 0 && a.skillNameInputCursor > 0 {
+				a.skillNameInput = a.skillNameInput[:a.skillNameInputCursor-1] + a.skillNameInput[a.skillNameInputCursor:]
+				a.skillNameInputCursor--
+			}
+		}
+		return a, nil
+
+	case tea.KeyDelete:
+		if a.skillURLActiveInput == 0 {
+			if a.skillURLInputCursor < len(a.skillURLInput) {
+				a.skillURLInput = a.skillURLInput[:a.skillURLInputCursor] + a.skillURLInput[a.skillURLInputCursor+1:]
+			}
+		} else {
+			if a.skillNameInputCursor < len(a.skillNameInput) {
+				a.skillNameInput = a.skillNameInput[:a.skillNameInputCursor] + a.skillNameInput[a.skillNameInputCursor+1:]
+			}
+		}
+		return a, nil
+
+	case tea.KeyLeft:
+		if a.skillURLActiveInput == 0 {
+			if a.skillURLInputCursor > 0 {
+				a.skillURLInputCursor--
+			}
+		} else {
+			if a.skillNameInputCursor > 0 {
+				a.skillNameInputCursor--
+			}
+		}
+		return a, nil
+
+	case tea.KeyRight:
+		if a.skillURLActiveInput == 0 {
+			if a.skillURLInputCursor < len(a.skillURLInput) {
+				a.skillURLInputCursor++
+			}
+		} else {
+			if a.skillNameInputCursor < len(a.skillNameInput) {
+				a.skillNameInputCursor++
+			}
+		}
+		return a, nil
+
+	case tea.KeyHome:
+		if a.skillURLActiveInput == 0 {
+			a.skillURLInputCursor = 0
+		} else {
+			a.skillNameInputCursor = 0
+		}
+		return a, nil
+
+	case tea.KeyEnd:
+		if a.skillURLActiveInput == 0 {
+			a.skillURLInputCursor = len(a.skillURLInput)
+		} else {
+			a.skillNameInputCursor = len(a.skillNameInput)
+		}
+		return a, nil
+
+	case tea.KeyEsc:
+		a.state = StateMainMenu
+		return a, nil
+
+	case tea.KeyCtrlC:
+		return a, tea.Quit
+
+	case tea.KeyF2:
+		// Switch to skill finder with F2
+		a.state = StateFindSkill
+		a.skillFinder = NewSkillFinder()
+		a.skillFinder.SetSize(a.width, a.height)
+		return a, a.skillFinder.Init()
+
+	default:
+		// Handle character input
+		if msg.Type == tea.KeyRunes {
+			// Regular character input
+			if a.skillURLActiveInput == 0 {
+				a.skillURLInput = a.skillURLInput[:a.skillURLInputCursor] + string(msg.Runes) + a.skillURLInput[a.skillURLInputCursor:]
+				a.skillURLInputCursor += len(msg.Runes)
+				a.skillURLError = "" // Clear error on input
+			} else {
+				a.skillNameInput = a.skillNameInput[:a.skillNameInputCursor] + string(msg.Runes) + a.skillNameInput[a.skillNameInputCursor:]
+				a.skillNameInputCursor += len(msg.Runes)
+			}
+		}
+		return a, nil
+	}
+}
+
+func (a *App) renderSkillURLForm() string {
+	if a.width == 0 {
+		a.width = 80
+	}
+
+	title := titleStyle.Render("  🧠 AI Shared Intelligence  ")
+	boxWidth := a.width - 8
+	if boxWidth < 60 {
+		boxWidth = 60
+	}
+
+	content := "\n"
+	content += infoStyle.Render("🔗 Install Skill from Repository") + "\n\n"
+	content += "Enter the repository URL and optional custom name.\n\n"
+
+	// URL Input
+	urlInputStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Padding(0, 1).
+		Width(boxWidth - 10)
+
+	if a.skillURLActiveInput != 0 {
+		urlInputStyle = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1).
+			Width(boxWidth - 10)
+	}
+
+	cursorChar := "█"
+	urlText := a.skillURLInput
+	if a.skillURLActiveInput == 0 && a.skillURLInputCursor <= len(urlText) {
+		urlText = urlText[:a.skillURLInputCursor] + cursorChar + urlText[a.skillURLInputCursor:]
+	}
+
+	content += "Repository URL:\n"
+	content += urlInputStyle.Render(urlText) + "\n\n"
+
+	// Name Input
+	nameInputStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Width(boxWidth - 10)
+
+	if a.skillURLActiveInput == 1 {
+		nameInputStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("205")).
+			Padding(0, 1).
+			Width(boxWidth - 10)
+	}
+
+	nameText := a.skillNameInput
+	if a.skillURLActiveInput == 1 && a.skillNameInputCursor <= len(nameText) {
+		nameText = nameText[:a.skillNameInputCursor] + cursorChar + nameText[a.skillNameInputCursor:]
+	}
+	if nameText == "" {
+		nameText = " " // Ensure cursor is visible in empty field
+	}
+
+	content += "Custom Name (optional):\n"
+	content += nameInputStyle.Render(nameText) + "\n\n"
+
+	// Examples
+	content += dimStyle.Render("Examples:") + "\n"
+	content += "  " + dimStyle.Render("vercel-labs/agent-skills") + "\n"
+	content += "  " + dimStyle.Render("https://github.com/user/repo/tree/main/skills/foo") + "\n"
+	content += "  " + dimStyle.Render("git@github.com:org/repo.git") + "\n\n"
+
+	if a.skillURLError != "" {
+		content += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("⚠ "+a.skillURLError) + "\n\n"
+	}
+
+	content += dimStyle.Render("Tab: Switch field • Enter: Install • f: Find Skills • Esc: Back • Ctrl+C: Quit")
+
+	box := boxStyle.Width(boxWidth).Render(content)
+
+	return lipgloss.Place(
+		a.width,
+		a.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(
+			lipgloss.Center,
+			title,
+			"",
+			box,
+		),
+	)
+}
+
+func (a *App) handleRegistrySkillInstall(skill registry.Skill) tea.Cmd {
+	return func() tea.Msg {
+		source := skill.Source
+		if source == "" {
+			// Parse from ID (owner/repo/skill-name)
+			parts := strings.Split(skill.ID, "/")
+			if len(parts) >= 2 {
+				source = strings.Join(parts[:2], "/")
+			}
+		}
+
+		// Parse URL
+		skillURLStr := fmt.Sprintf("%s@%s", source, skill.Name)
+		skillURL, err := repo.ParseSkillURL(skillURLStr)
+		if err != nil {
+			return SkillInstallErrorMsg{Err: fmt.Errorf("failed to parse skill URL: %w", err)}
+		}
+
+		var repoMgr *repo.Manager
+
+		// Only need repo manager for git URLs (not local paths)
+		if !skillURL.IsLocal {
+			cfg := a.cfg
+			var err error
+			repoMgr, err = repo.NewManager(cfg)
+			if err != nil {
+				return SkillInstallErrorMsg{Err: fmt.Errorf("failed to create repository manager: %w", err)}
+			}
+		}
+
+		inst := installer.New(repoMgr, a.target, a.projectRoot)
+		track := tracker.New(a.projectRoot, a.target)
+
+		// Install the skill from URL
+		result, err := inst.InstallSkillFromURL(skillURL, "")
+		if err != nil {
+			// Check for specific error types
+			errStr := err.Error()
+			if strings.Contains(errStr, "repository not found") || strings.Contains(errStr, "not accessible") {
+				return SkillInstallErrorMsg{
+					Err: fmt.Errorf("⚠️  This skill is from a private or deleted repository (%s)\n\nThe repository may have been removed, made private, or the owner may have changed their username.\n\nTry installing from a different source or contact the skill author.", source),
+				}
+			}
+			return SkillInstallErrorMsg{Err: err}
+		}
+
+		if result.Success {
+			a.installDone = 1
+			a.installMsg = fmt.Sprintf("Installed %s", result.Name)
+			// Record with full source information
+			// Don't modify project repoURL/repoCommit when installing from external source
+			skillEntry := tracker.SkillEntry{
+				Name:   result.Name,
+				Source: source,
+				Path:   result.SourcePath, // Use the actual discovered path
+			}
+			_ = track.RecordSkillInstallOnly(skillEntry)
+		} else {
+			// Check for specific error types
+			if result.Error != nil {
+				errStr := result.Error.Error()
+				if strings.Contains(errStr, "repository not found") || strings.Contains(errStr, "not accessible") {
+					return SkillInstallErrorMsg{
+						Err: fmt.Errorf("⚠️  This skill is from a private or deleted repository (%s)\n\nThe repository may have been removed, made private, or the owner may have changed their username.\n\nTry installing from a different source or contact the skill author.", source),
+					}
+				}
+			}
+			return SkillInstallErrorMsg{Err: result.Error}
+		}
+
+		return InstallCompletedMsg{
+			SuccessCount: 1,
+			Errors:       []string{},
+		}
+	}
+}
+
+func (a *App) handleSkillURLInstall(skillURL *repo.SkillURL, overrideName string) tea.Cmd {
+	return func() tea.Msg {
+		var repoMgr *repo.Manager
+
+		// Only need repo manager for git URLs (not local paths)
+		if !skillURL.IsLocal {
+			cfg := a.cfg
+			var err error
+			repoMgr, err = repo.NewManager(cfg)
+			if err != nil {
+				return ErrorMsg{Err: fmt.Errorf("failed to create repository manager: %w", err)}
+			}
+		}
+
+		inst := installer.New(repoMgr, a.target, a.projectRoot)
+		track := tracker.New(a.projectRoot, a.target)
+
+		// Install the skill from URL
+		result, err := inst.InstallSkillFromURL(skillURL, overrideName)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+
+		if result.Success {
+			a.installDone = 1
+			a.installMsg = fmt.Sprintf("Installed %s", result.Name)
+			// Record with full source information
+			// Don't modify project repoURL/repoCommit when installing from external source
+			skillEntry := tracker.SkillEntry{
+				Name:   result.Name,
+				Source: skillURL.RepoURL,
+				Path:   result.SourcePath, // Use the actual discovered path
+			}
+			_ = track.RecordSkillInstallOnly(skillEntry)
+		} else {
+			return ErrorMsg{Err: result.Error}
+		}
+
+		return InstallCompletedMsg{
+			SuccessCount: 1,
+			Errors:       []string{},
 		}
 	}
 }

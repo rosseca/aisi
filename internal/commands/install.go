@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/rosseca/aisi/internal/installer"
 	"github.com/rosseca/aisi/internal/manifest"
@@ -17,6 +18,8 @@ var (
 	installType   string
 	installAll    bool
 	installGlobal bool
+	installURL    string
+	installName   string
 )
 
 var installCmd = &cobra.Command{
@@ -41,9 +44,19 @@ func init() {
 	installCmd.Flags().StringVar(&installType, "type", "", "Asset type (rules, skills, agents, hooks, mcp)")
 	installCmd.Flags().BoolVar(&installAll, "all", false, "Install all assets of the specified type")
 	installCmd.Flags().BoolVar(&installGlobal, "global", false, "Install MCP to global config (home directory)")
+	installCmd.Flags().StringVar(&installURL, "url", "", "Install asset from a URL (supports GitHub shorthand, tree paths, git URLs, local paths)")
+	installCmd.Flags().StringVar(&installName, "name", "", "Custom name for the installed asset (used with --url)")
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
+	// Handle URL-based installation
+	if installURL != "" {
+		if installType == "" {
+			return fmt.Errorf("--type is required when using --url (e.g., --type=skills)")
+		}
+		return installFromURL()
+	}
+
 	// If no arguments provided, install from lock file
 	if len(args) == 0 && !installAll {
 		return installFromLock()
@@ -102,12 +115,170 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, name := range args {
+		// Try to detect if the argument is a skill from an online repository (owner/repo format)
+		if looksLikeSkillRepo(name) {
+			// Attempt to install as skill from URL first
+			if err := installSkillFromSource(inst, track, name); err == nil {
+				continue // Success, move to next argument
+			}
+			// If skill install fails, fall through to try as local asset
+		}
+
 		if err := installAsset(inst, track, m, name, repoURL, commit); err != nil {
 			fmt.Printf("✗ %s: %v\n", name, err)
 		}
 	}
 
 	return nil
+}
+
+// looksLikeSkillRepo checks if the name matches the pattern "owner/repo" or "owner/repo/skill-name"
+// which indicates it might be a skill from an online repository.
+func looksLikeSkillRepo(name string) bool {
+	// Check for patterns like:
+	// - "owner/repo" (exactly one or two slashes, no spaces)
+	// - "github.com/owner/repo"
+	// - "gitlab.com/owner/repo"
+
+	parts := strings.Split(name, "/")
+
+	// Remove empty parts (from leading/trailing slashes)
+	cleanParts := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			cleanParts = append(cleanParts, p)
+		}
+	}
+
+	// Valid patterns: owner/repo (2 parts) or owner/repo/skill (3+ parts)
+	if len(cleanParts) >= 2 {
+		// Check that parts look valid (no spaces, at least one character each)
+		for _, p := range cleanParts {
+			if p == "" || strings.Contains(p, " ") {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// installSkillFromSource attempts to install a skill from an online repository.
+// It parses the name as a skill URL and installs it.
+// If multiple skills are found in the repository, it shows a selection menu.
+func installSkillFromSource(inst *installer.Installer, track *tracker.Tracker, source string) error {
+	// Try to parse as a skill URL (owner/repo or full URL)
+	skillURL, err := repo.ParseSkillURL(source)
+	if err != nil {
+		return err
+	}
+
+	result, err := inst.InstallSkillFromURL(skillURL, "")
+	if err != nil {
+		// Check if this is a MultipleSkillsError - show selection menu
+		if multiErr, ok := err.(*repo.MultipleSkillsError); ok {
+			return selectAndInstallSkill(inst, track, skillURL, multiErr.FoundSkills)
+		}
+		return err
+	}
+
+	if result.Success {
+		fmt.Printf("✓ Installed %s (skill) from %s\n", result.Name, source)
+		// Record with source information - use the actual discovered path
+		skillEntry := tracker.SkillEntry{
+			Name:   result.Name,
+			Source: skillURL.RepoURL,
+			Path:   result.SourcePath,
+		}
+		_ = track.RecordSkillInstallOnly(skillEntry)
+		return nil
+	}
+
+	return result.Error
+}
+
+// selectAndInstallSkill shows an interactive menu to select which skill to install
+// when multiple skills are found in a repository.
+func selectAndInstallSkill(inst *installer.Installer, track *tracker.Tracker, skillURL *repo.SkillURL, skills []*repo.DiscoveredSkill) error {
+	fmt.Printf("\n📦 Found %d skills in %s:\n\n", len(skills), skillURL.RepoURL)
+
+	for i, skill := range skills {
+		// Try to get description from SKILL.md
+		metadata, _ := repo.ParseSkillMD(skill.SKILLMdPath)
+		desc := ""
+		if metadata != nil {
+			desc = metadata.GetDescription(60)
+		}
+
+		fmt.Printf("  %d. %s\n", i+1, skill.Name)
+		if skill.Path != "" && skill.Path != "." {
+			fmt.Printf("     Path: %s/\n", skill.Path)
+		}
+		if desc != "" {
+			fmt.Printf("     %s\n", desc)
+		}
+		fmt.Println()
+	}
+
+	// Ask user to select
+	fmt.Print("Select skill to install (1-" + fmt.Sprintf("%d", len(skills)) + ", or 'a' for all, or 'c' to cancel): ")
+	
+	var input string
+	if _, err := fmt.Scanln(&input); err != nil {
+		// If scan fails (e.g., EOF), default to first skill
+		input = "1"
+	}
+
+	input = strings.TrimSpace(strings.ToLower(input))
+
+	if input == "c" || input == "cancel" {
+		return fmt.Errorf("installation cancelled")
+	}
+
+	if input == "a" || input == "all" {
+		// Install all skills
+		for _, skill := range skills {
+			if err := installDiscoveredSkill(inst, track, skillURL, skill); err != nil {
+				fmt.Printf("✗ Failed to install %s: %v\n", skill.Name, err)
+			}
+		}
+		return nil
+	}
+
+	// Parse selection number
+	var selection int
+	if _, err := fmt.Sscanf(input, "%d", &selection); err != nil || selection < 1 || selection > len(skills) {
+		return fmt.Errorf("invalid selection: %s", input)
+	}
+
+	selectedSkill := skills[selection-1]
+	return installDiscoveredSkill(inst, track, skillURL, selectedSkill)
+}
+
+// installDiscoveredSkill installs a specific discovered skill
+func installDiscoveredSkill(inst *installer.Installer, track *tracker.Tracker, skillURL *repo.SkillURL, skill *repo.DiscoveredSkill) error {
+	// Create a modified skillURL with the specific path
+	urlCopy := *skillURL
+	urlCopy.Path = skill.Path
+
+	result, err := inst.InstallSkillFromURL(&urlCopy, "")
+	if err != nil {
+		return err
+	}
+
+	if result.Success {
+		fmt.Printf("✓ Installed %s (skill) from %s\n", result.Name, skillURL.RepoURL)
+		// Record with source information - use the actual discovered path from result
+		skillEntry := tracker.SkillEntry{
+			Name:   result.Name,
+			Source: skillURL.RepoURL,
+			Path:   result.SourcePath,
+		}
+		_ = track.RecordSkillInstallOnly(skillEntry)
+		return nil
+	}
+
+	return result.Error
 }
 
 func installFromLock() error {
@@ -188,18 +359,12 @@ func installFromLock() error {
 
 	fmt.Println("\nInstalling assets from lock file...")
 
-	// Install all assets from lock file
-	allAssets := []string{}
-	allAssets = append(allAssets, lock.Assets.Rules...)
-	allAssets = append(allAssets, lock.Assets.Skills...)
-	allAssets = append(allAssets, lock.Assets.Agents...)
-	allAssets = append(allAssets, lock.Assets.Hooks...)
-	allAssets = append(allAssets, lock.Assets.MCP...)
-	allAssets = append(allAssets, lock.Assets.AgentsMD...)
-	allAssets = append(allAssets, lock.Assets.External...)
-
 	successCount := 0
-	for _, name := range allAssets {
+	totalCount := 0
+
+	// Install rules
+	for _, name := range lock.Assets.Rules {
+		totalCount++
 		if err := installAsset(inst, track, m, name, repoURL, commit); err != nil {
 			fmt.Printf("✗ %s: %v\n", name, err)
 		} else {
@@ -207,7 +372,194 @@ func installFromLock() error {
 		}
 	}
 
-	fmt.Printf("\n✓ Installed %d/%d assets from lock file\n", successCount, len(allAssets))
+	// Install skills (handle both online and local sources)
+	for _, skillEntry := range lock.Assets.Skills {
+		totalCount++
+		if err := installSkillFromEntry(inst, track, skillEntry, repoURL, commit); err != nil {
+			fmt.Printf("✗ %s: %v\n", skillEntry.Name, err)
+		} else {
+			successCount++
+		}
+	}
+
+	// Install agents
+	for _, name := range lock.Assets.Agents {
+		totalCount++
+		if err := installAsset(inst, track, m, name, repoURL, commit); err != nil {
+			fmt.Printf("✗ %s: %v\n", name, err)
+		} else {
+			successCount++
+		}
+	}
+
+	// Install hooks
+	for _, name := range lock.Assets.Hooks {
+		totalCount++
+		if err := installAsset(inst, track, m, name, repoURL, commit); err != nil {
+			fmt.Printf("✗ %s: %v\n", name, err)
+		} else {
+			successCount++
+		}
+	}
+
+	// Install MCP servers
+	for _, name := range lock.Assets.MCP {
+		totalCount++
+		if err := installAsset(inst, track, m, name, repoURL, commit); err != nil {
+			fmt.Printf("✗ %s: %v\n", name, err)
+		} else {
+			successCount++
+		}
+	}
+
+	// Install AgentsMD
+	for _, name := range lock.Assets.AgentsMD {
+		totalCount++
+		if err := installAsset(inst, track, m, name, repoURL, commit); err != nil {
+			fmt.Printf("✗ %s: %v\n", name, err)
+		} else {
+			successCount++
+		}
+	}
+
+	// Install external assets
+	for _, name := range lock.Assets.External {
+		totalCount++
+		if err := installAsset(inst, track, m, name, repoURL, commit); err != nil {
+			fmt.Printf("✗ %s: %v\n", name, err)
+		} else {
+			successCount++
+		}
+	}
+
+	fmt.Printf("\n✓ Installed %d/%d assets from lock file\n", successCount, totalCount)
+	return nil
+}
+
+// installSkillFromEntry installs a skill from a SkillEntry.
+// If the skill has a Source (online repository), it installs from there.
+// Otherwise, it installs from the local repository.
+func installSkillFromEntry(inst *installer.Installer, track *tracker.Tracker, entry tracker.SkillEntry, repoURL, commit string) error {
+	// If skill has a remote source, install from there
+	if entry.Source != "" {
+		skillURL, err := repo.ParseSkillURL(entry.Source)
+		if err != nil {
+			return fmt.Errorf("failed to parse skill source %q: %w", entry.Source, err)
+		}
+
+		// If a specific path is recorded, use it
+		if entry.Path != "" {
+			skillURL.Path = entry.Path
+		}
+
+		result, err := inst.InstallSkillFromURL(skillURL, entry.Name)
+		if err != nil {
+			return err
+		}
+
+		if result.Success {
+			fmt.Printf("✓ Installed %s (%s) from %s\n", result.Name, result.Type, entry.Source)
+			// Record with source information preserved
+			_ = track.RecordSkillInstall(entry, repoURL, commit)
+			return nil
+		}
+		return result.Error
+	}
+
+	// No source - try to install from local repository
+	// This handles legacy skills or skills from the main project repo
+	cfg, err := getConfig()
+	if err != nil {
+		return err
+	}
+
+	repoMgr, err := repo.NewManager(cfg)
+	if err != nil {
+		return err
+	}
+
+	if err := repoMgr.EnsureMainRepo(); err != nil {
+		return fmt.Errorf("failed to fetch repository: %w", err)
+	}
+
+	manifestPath := repoMgr.GetManifestPath()
+	m, err := manifest.Load(manifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to load manifest: %w", err)
+	}
+
+	result, err := inst.Install(m, entry.Name)
+	if err != nil {
+		return err
+	}
+
+	if result.Success {
+		fmt.Printf("✓ Installed %s (%s)\n", result.Name, result.Type)
+		_ = track.RecordInstall(result.Type, result.Name, repoURL, commit)
+		return nil
+	}
+	return result.Error
+}
+
+func installFromURL() error {
+	if installType != "skills" {
+		return fmt.Errorf("--url currently only supported for --type=skills")
+	}
+
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	target, err := getTarget()
+	if err != nil {
+		return err
+	}
+
+	// Parse the URL
+	skillURL, err := repo.ParseSkillURL(installURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	var repoMgr *repo.Manager
+
+	// Only need repo manager for git URLs (not local paths)
+	if !skillURL.IsLocal {
+		cfg, err := getConfig()
+		if err != nil {
+			return err
+		}
+
+		repoMgr, err = repo.NewManager(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create repository manager: %w", err)
+		}
+	}
+
+	inst := installer.New(repoMgr, target, projectRoot)
+	track := tracker.New(projectRoot, target)
+
+	// Install the skill from URL
+	result, err := inst.InstallSkillFromURL(skillURL, installName)
+	if err != nil {
+		return err
+	}
+
+	if result.Success {
+		fmt.Printf("✓ Installed %s (%s) from %s\n", result.Name, result.Type, installURL)
+		// Track the installation with full source information
+		// Don't modify project repoURL/repoCommit when installing from external source
+		skillEntry := tracker.SkillEntry{
+			Name:   result.Name,
+			Source: skillURL.RepoURL,
+			Path:   skillURL.Path,
+		}
+		_ = track.RecordSkillInstallOnly(skillEntry)
+	} else {
+		return result.Error
+	}
+
 	return nil
 }
 

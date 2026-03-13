@@ -156,6 +156,10 @@ func (m *MockGitRunner) Checkout(repoPath, ref string) error {
 	return nil
 }
 
+func (m *MockGitRunner) VerifyRepoAccess(url string) error {
+	return nil
+}
+
 func setupTestInstaller(t *testing.T) (*Installer, string, string) {
 	tmpDir := t.TempDir()
 	originalHome := os.Getenv("HOME")
@@ -1101,6 +1105,10 @@ func (m *MockGitRunnerFailing) GetCurrentCommit(repoPath string) (string, error)
 
 func (m *MockGitRunnerFailing) Checkout(repoPath, ref string) error {
 	return errors.New("checkout failed")
+}
+
+func (m *MockGitRunnerFailing) VerifyRepoAccess(url string) error {
+	return errors.New("verify access failed")
 }
 
 // ==================== INSTALL EXTERNAL TESTS ====================

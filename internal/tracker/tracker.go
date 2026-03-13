@@ -13,14 +13,47 @@ import (
 
 const LockFileName = ".aisi.lock"
 
+// SkillEntry represents an installed skill with its source information.
+// For skills installed from online repositories, Source will be set (e.g., "owner/repo").
+// For skills installed from local repositories, Source will be empty.
+type SkillEntry struct {
+	Name   string `json:"name"`            // Skill name
+	Source string `json:"source,omitempty"` // Repository source (owner/repo) for online skills
+	Path   string `json:"path,omitempty"` // Subpath within the repository (if applicable)
+	Commit string `json:"commit,omitempty"` // Commit hash for reproducibility
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for backward compatibility.
+// It handles both the old format ([]string) and the new format ([]SkillEntry).
+func (s *SkillEntry) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string (old format)
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		s.Name = str
+		s.Source = ""
+		s.Path = ""
+		s.Commit = ""
+		return nil
+	}
+
+	// Try to unmarshal as struct (new format)
+	type skillEntryAlias SkillEntry // Avoid recursion
+	var alias skillEntryAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*s = SkillEntry(alias)
+	return nil
+}
+
 type InstalledAssets struct {
-	Rules    []string `json:"rules,omitempty"`
-	Skills   []string `json:"skills,omitempty"`
-	Agents   []string `json:"agents,omitempty"`
-	Hooks    []string `json:"hooks,omitempty"`
-	MCP      []string `json:"mcp,omitempty"`
-	AgentsMD []string `json:"agentsMd,omitempty"`
-	External []string `json:"external,omitempty"`
+	Rules    []string     `json:"rules,omitempty"`
+	Skills   []SkillEntry `json:"skills,omitempty"`
+	Agents   []string     `json:"agents,omitempty"`
+	Hooks    []string     `json:"hooks,omitempty"`
+	MCP      []string     `json:"mcp,omitempty"`
+	AgentsMD []string     `json:"agentsMd,omitempty"`
+	External []string     `json:"external,omitempty"`
 }
 
 type LockFile struct {
@@ -87,6 +120,9 @@ func (t *Tracker) Save(lock *LockFile) error {
 	return nil
 }
 
+// RecordInstall records a single asset installation.
+// For skills with source information (online repos), use RecordSkillInstall.
+// This method still supports skills for backward compatibility, creating a SkillEntry without source.
 func (t *Tracker) RecordInstall(assetType manifest.AssetType, name string, repoURL, repoCommit string) error {
 	lock, err := t.Load()
 	if err != nil {
@@ -102,7 +138,9 @@ func (t *Tracker) RecordInstall(assetType manifest.AssetType, name string, repoU
 	case manifest.AssetTypeRule:
 		lock.Assets.Rules = addUnique(lock.Assets.Rules, name)
 	case manifest.AssetTypeSkill:
-		lock.Assets.Skills = addUnique(lock.Assets.Skills, name)
+		// For backward compatibility: create SkillEntry without source info
+		entry := SkillEntry{Name: name}
+		lock.Assets.Skills = addUniqueSkill(lock.Assets.Skills, entry)
 	case manifest.AssetTypeAgent:
 		lock.Assets.Agents = addUnique(lock.Assets.Agents, name)
 	case manifest.AssetTypeHook:
@@ -116,6 +154,50 @@ func (t *Tracker) RecordInstall(assetType manifest.AssetType, name string, repoU
 	}
 
 	return t.Save(lock)
+}
+
+// RecordSkillInstall records a skill installation with full source information.
+// Use this instead of RecordInstall when installing skills (especially from online sources).
+// This updates the project metadata (repoURL, repoCommit) - use RecordSkillInstallOnly to preserve them.
+func (t *Tracker) RecordSkillInstall(entry SkillEntry, repoURL, repoCommit string) error {
+	lock, err := t.Load()
+	if err != nil {
+		return err
+	}
+
+	lock.InstalledAt = time.Now().UTC().Format(time.RFC3339)
+	lock.RepoURL = repoURL
+	lock.RepoCommit = repoCommit
+	lock.Target = t.target.Name
+
+	lock.Assets.Skills = addUniqueSkill(lock.Assets.Skills, entry)
+
+	return t.Save(lock)
+}
+
+// RecordSkillInstallOnly records a skill installation without modifying project metadata.
+// Use this when installing skills from external/online sources to preserve the project's repoURL and repoCommit.
+func (t *Tracker) RecordSkillInstallOnly(entry SkillEntry) error {
+	lock, err := t.Load()
+	if err != nil {
+		return err
+	}
+
+	lock.InstalledAt = time.Now().UTC().Format(time.RFC3339)
+	// Preserve existing repoURL and repoCommit - don't modify them
+	lock.Target = t.target.Name
+
+	lock.Assets.Skills = addUniqueSkill(lock.Assets.Skills, entry)
+
+	return t.Save(lock)
+}
+
+// InstallRecord represents a single asset installation result.
+type InstallRecord struct {
+	Name   string
+	Type   manifest.AssetType
+	Source string // Repository source for skills (owner/repo format)
+	Path   string // Subpath within the repository
 }
 
 func (t *Tracker) RecordInstalls(results []InstallRecord, repoURL, repoCommit string) error {
@@ -134,7 +216,14 @@ func (t *Tracker) RecordInstalls(results []InstallRecord, repoURL, repoCommit st
 		case manifest.AssetTypeRule:
 			lock.Assets.Rules = addUnique(lock.Assets.Rules, r.Name)
 		case manifest.AssetTypeSkill:
-			lock.Assets.Skills = addUnique(lock.Assets.Skills, r.Name)
+			// Create SkillEntry with source information if available
+			entry := SkillEntry{
+				Name:   r.Name,
+				Source: r.Source,
+				Path:   r.Path,
+				Commit: repoCommit,
+			}
+			lock.Assets.Skills = addUniqueSkill(lock.Assets.Skills, entry)
 		case manifest.AssetTypeAgent:
 			lock.Assets.Agents = addUnique(lock.Assets.Agents, r.Name)
 		case manifest.AssetTypeHook:
@@ -151,11 +240,6 @@ func (t *Tracker) RecordInstalls(results []InstallRecord, repoURL, repoCommit st
 	return t.Save(lock)
 }
 
-type InstallRecord struct {
-	Name string
-	Type manifest.AssetType
-}
-
 func (t *Tracker) IsInstalled(assetType manifest.AssetType, name string) (bool, error) {
 	lock, err := t.Load()
 	if err != nil {
@@ -167,7 +251,7 @@ func (t *Tracker) IsInstalled(assetType manifest.AssetType, name string) (bool, 
 	case manifest.AssetTypeRule:
 		list = lock.Assets.Rules
 	case manifest.AssetTypeSkill:
-		list = lock.Assets.Skills
+		return containsSkill(lock.Assets.Skills, name), nil
 	case manifest.AssetTypeAgent:
 		list = lock.Assets.Agents
 	case manifest.AssetTypeHook:
@@ -217,7 +301,7 @@ func (t *Tracker) Remove(assetType manifest.AssetType, name string) error {
 	case manifest.AssetTypeRule:
 		lock.Assets.Rules = remove(lock.Assets.Rules, name)
 	case manifest.AssetTypeSkill:
-		lock.Assets.Skills = remove(lock.Assets.Skills, name)
+		lock.Assets.Skills = removeSkill(lock.Assets.Skills, name)
 	case manifest.AssetTypeAgent:
 		lock.Assets.Agents = remove(lock.Assets.Agents, name)
 	case manifest.AssetTypeHook:
@@ -255,6 +339,42 @@ func remove(list []string, item string) []string {
 	result := make([]string, 0, len(list))
 	for _, v := range list {
 		if v != item {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// SkillEntry helper functions
+
+func addUniqueSkill(list []SkillEntry, item SkillEntry) []SkillEntry {
+	for _, v := range list {
+		if v.Name == item.Name {
+			// Update existing entry if source is being added
+			if item.Source != "" && v.Source == "" {
+				v.Source = item.Source
+				v.Path = item.Path
+				v.Commit = item.Commit
+			}
+			return list
+		}
+	}
+	return append(list, item)
+}
+
+func containsSkill(list []SkillEntry, name string) bool {
+	for _, v := range list {
+		if v.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func removeSkill(list []SkillEntry, name string) []SkillEntry {
+	result := make([]SkillEntry, 0, len(list))
+	for _, v := range list {
+		if v.Name != name {
 			result = append(result, v)
 		}
 	}

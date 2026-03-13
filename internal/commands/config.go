@@ -34,7 +34,7 @@ var configSetTargetCmd = &cobra.Command{
 	Short: "Set the default target",
 	Long: `Set the default AI agent target.
 
-Available targets: cursor, kilo, junie, windsurf
+Available targets: cursor, kilo, junie
 
 Examples:
   aisi config set-target cursor
@@ -109,14 +109,13 @@ func runConfigSetTarget(cmd *cobra.Command, args []string) error {
 
 	targetName := args[0]
 	validTargets := map[string]bool{
-		"cursor":   true,
-		"kilo":     true,
-		"junie":    true,
-		"windsurf": true,
+		"cursor": true,
+		"kilo":   true,
+		"junie":  true,
 	}
 
 	if !validTargets[targetName] {
-		return fmt.Errorf("invalid target: %s. Valid targets: cursor, kilo, junie, windsurf", targetName)
+		return fmt.Errorf("invalid target: %s. Valid targets: cursor, kilo, junie", targetName)
 	}
 
 	cfg.SetActiveTarget(targetName)
@@ -224,12 +223,11 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("  [1] Cursor        (cursor, .cursor/)")
 	fmt.Println("  [2] Kilo Code     (kilo, .kilocode/)")
 	fmt.Println("  [3] Junie         (junie, .junie/)")
-	fmt.Println("  [4] Windsurf      (windsurf, .windsurf/)")
 	fmt.Println()
 
 	currentTarget := cfg.ActiveTarget
 	fmt.Printf("Current: %s\n", currentTarget)
-	fmt.Print("Select [1-4 or press Enter to keep current]: ")
+	fmt.Print("Select [1-3 or press Enter to keep current]: ")
 
 	targetInput, _ := reader.ReadString('\n')
 	targetInput = strings.TrimSpace(targetInput)
@@ -238,7 +236,6 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 		"1": "cursor",
 		"2": "kilo",
 		"3": "junie",
-		"4": "windsurf",
 	}
 
 	if targetInput != "" {

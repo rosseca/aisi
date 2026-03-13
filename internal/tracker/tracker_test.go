@@ -39,7 +39,7 @@ func TestTracker_SaveAndLoad(t *testing.T) {
 		Target:      "cursor",
 		Assets: InstalledAssets{
 			Rules:  []string{"rule1", "rule2"},
-			Skills: []string{"skill1"},
+			Skills: []SkillEntry{{Name: "skill1"}},
 		},
 	}
 
@@ -51,7 +51,8 @@ func TestTracker_SaveAndLoad(t *testing.T) {
 	assert.Equal(t, "abc123", loaded.RepoCommit)
 	assert.Equal(t, "cursor", loaded.Target)
 	assert.Equal(t, []string{"rule1", "rule2"}, loaded.Assets.Rules)
-	assert.Equal(t, []string{"skill1"}, loaded.Assets.Skills)
+	assert.Len(t, loaded.Assets.Skills, 1)
+	assert.Equal(t, "skill1", loaded.Assets.Skills[0].Name)
 }
 
 func TestTracker_RecordInstall(t *testing.T) {
@@ -67,9 +68,37 @@ func TestTracker_RecordInstall(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, lock.Assets.Rules, "my-rule")
-	assert.Contains(t, lock.Assets.Skills, "my-skill")
+	// Skills are stored as SkillEntry structs
+	skillNames := make([]string, len(lock.Assets.Skills))
+	for i, s := range lock.Assets.Skills {
+		skillNames[i] = s.Name
+	}
+	assert.Contains(t, skillNames, "my-skill")
 	assert.Equal(t, "commit2", lock.RepoCommit)
 	assert.Equal(t, "https://github.com/test/repo", lock.RepoURL)
+}
+
+func TestTracker_RecordSkillInstall(t *testing.T) {
+	tracker, _ := setupTestTracker(t)
+
+	// Install skill with full source information
+	skillEntry := SkillEntry{
+		Name:   "online-skill",
+		Source: "owner/repo",
+		Path:   "skills/online",
+		Commit: "abc123",
+	}
+	err := tracker.RecordSkillInstall(skillEntry, "https://github.com/main/repo", "commit1")
+	require.NoError(t, err)
+
+	lock, err := tracker.Load()
+	require.NoError(t, err)
+
+	require.Len(t, lock.Assets.Skills, 1)
+	assert.Equal(t, "online-skill", lock.Assets.Skills[0].Name)
+	assert.Equal(t, "owner/repo", lock.Assets.Skills[0].Source)
+	assert.Equal(t, "skills/online", lock.Assets.Skills[0].Path)
+	assert.Equal(t, "abc123", lock.Assets.Skills[0].Commit)
 }
 
 func TestTracker_RecordInstall_NoDuplicates(t *testing.T) {
@@ -145,7 +174,12 @@ func TestTracker_GetInstalled(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, assets.Rules, "rule1")
-	assert.Contains(t, assets.Skills, "skill1")
+	// Skills are SkillEntry structs
+	skillNames := make([]string, len(assets.Skills))
+	for i, s := range assets.Skills {
+		skillNames[i] = s.Name
+	}
+	assert.Contains(t, skillNames, "skill1")
 }
 
 func TestTracker_GetRepoCommit(t *testing.T) {
@@ -216,4 +250,44 @@ func TestTracker_AllAssetTypes(t *testing.T) {
 	assert.Len(t, lock.Assets.MCP, 1)
 	assert.Len(t, lock.Assets.AgentsMD, 1)
 	assert.Len(t, lock.Assets.External, 1)
+}
+
+// TestTracker_BackwardCompatibility verifies that old lock files with skills as strings
+// can still be loaded correctly.
+func TestTracker_BackwardCompatibility(t *testing.T) {
+	tracker, projectDir := setupTestTracker(t)
+
+	// Create an old-style lock file with skills as strings
+	oldLockContent := `{
+  "installedAt": "2026-03-12T10:00:00Z",
+  "repoURL": "https://github.com/test/repo",
+  "repoCommit": "abc123",
+  "target": "cursor",
+  "assets": {
+    "rules": ["rule1", "rule2"],
+    "skills": ["legacy-skill-1", "legacy-skill-2"]
+  }
+}`
+
+	lockPath := filepath.Join(projectDir, targets.CursorTarget.ConfigDir, LockFileName)
+	err := os.MkdirAll(filepath.Dir(lockPath), 0755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(lockPath, []byte(oldLockContent), 0644)
+	require.NoError(t, err)
+
+	// Load the old lock file
+	lock, err := tracker.Load()
+	require.NoError(t, err)
+
+	// Verify skills were loaded correctly (converted from strings to SkillEntry)
+	assert.Len(t, lock.Assets.Skills, 2)
+	assert.Equal(t, "legacy-skill-1", lock.Assets.Skills[0].Name)
+	assert.Equal(t, "legacy-skill-2", lock.Assets.Skills[1].Name)
+	// Source should be empty for legacy skills
+	assert.Empty(t, lock.Assets.Skills[0].Source)
+	assert.Empty(t, lock.Assets.Skills[1].Source)
+
+	// Verify other assets still work
+	assert.Equal(t, []string{"rule1", "rule2"}, lock.Assets.Rules)
 }

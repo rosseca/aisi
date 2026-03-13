@@ -81,7 +81,6 @@ func (r *Registry) registerBuiltins() {
 	r.Register(CursorTarget)
 	r.Register(KiloTarget)
 	r.Register(JunieTarget)
-	r.Register(WindsurfTarget)
 }
 
 func (r *Registry) Register(t *Target) {

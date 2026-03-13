@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-13
+
+### Added
+
+- Homebrew tap support — install via `brew tap rosseca/tap && brew install aisi`
+- External skill installation — install skills directly from any Git repository without manifest registration
+  - GitHub shorthand: `aisi install skill --url owner/repo`
+  - Full URLs with path support: `aisi install skill --url https://github.com/owner/repo/tree/main/skills/foo`
+  - Custom naming: `aisi install skill --url owner/repo --name my-skill`
+  - SSH and GitLab support
+- Improved error messages with context and suggestions
+
+### Changed
+
+- README restructured with clearer installation examples
+- "Installing Skills from External Repositories" section reorganized following community best practices
+- Homebrew promoted as recommended installation method for macOS
+
+### Fixed
+
+- Proper handling of skill directories with nested paths
+- Lock file updates when reinstalling external skills
+
 ## [0.1.0] - 2026-03-13
 
 ### Added
@@ -35,4 +58,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.2.0]: https://github.com/rosseca/aisi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rosseca/aisi/releases/tag/v0.1.0

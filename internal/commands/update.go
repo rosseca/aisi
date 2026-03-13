@@ -96,11 +96,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for _, name := range installed.Skills {
-		if skill := m.GetSkill(name); skill != nil {
+	for _, entry := range installed.Skills {
+		if skill := m.GetSkill(entry.Name); skill != nil {
 			result, err := inst.InstallSkill(skill)
 			if err == nil && result.Success {
-				fmt.Printf("✓ Updated skill: %s\n", name)
+				fmt.Printf("✓ Updated skill: %s\n", entry.Name)
 				updated++
 			}
 		}

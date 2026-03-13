@@ -16,6 +16,7 @@ type MockGitRunner struct {
 	GetRemoteURLFunc     func(repoPath string) (string, error)
 	GetCurrentCommitFunc func(repoPath string) (string, error)
 	CheckoutFunc         func(repoPath, ref string) error
+	VerifyRepoAccessFunc func(url string) error
 
 	CloneCalls    []CloneCall
 	PullCalls     []string
@@ -70,6 +71,13 @@ func (m *MockGitRunner) Checkout(repoPath, ref string) error {
 	m.CheckoutCalls = append(m.CheckoutCalls, CheckoutCall{repoPath, ref})
 	if m.CheckoutFunc != nil {
 		return m.CheckoutFunc(repoPath, ref)
+	}
+	return nil
+}
+
+func (m *MockGitRunner) VerifyRepoAccess(url string) error {
+	if m.VerifyRepoAccessFunc != nil {
+		return m.VerifyRepoAccessFunc(url)
 	}
 	return nil
 }

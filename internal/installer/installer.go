@@ -102,11 +102,12 @@ type Installer struct {
 }
 
 type InstallResult struct {
-	Name    string
-	Type    manifest.AssetType
-	Path    string
-	Success bool
-	Error   error
+	Name       string
+	Type       manifest.AssetType
+	Path       string // Destination path where the skill was installed
+	SourcePath string // Relative path within the source repo (for lock file)
+	Success    bool
+	Error      error
 }
 
 func New(repoMgr *repo.Manager, target *targets.Target, projectRoot string) *Installer {

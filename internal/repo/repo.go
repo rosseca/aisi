@@ -141,6 +141,12 @@ func (m *Manager) EnsureExternalRepo(repoURL, ref string) (string, error) {
 	}
 
 	url := m.getCloneURL(repoURL)
+
+	// Verify repository access before attempting to clone
+	if err := m.git.VerifyRepoAccess(url); err != nil {
+		return "", fmt.Errorf("repository not accessible: %w", err)
+	}
+
 	if err := m.git.Clone(url, repoPath, 1); err != nil {
 		return "", fmt.Errorf("failed to clone external repository: %w", err)
 	}

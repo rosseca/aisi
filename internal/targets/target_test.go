@@ -18,7 +18,6 @@ func TestRegistry_Get(t *testing.T) {
 		{"cursor exists", "cursor", false},
 		{"kilo exists", "kilo", false},
 		{"junie exists", "junie", false},
-		{"windsurf exists", "windsurf", false},
 		{"unknown target", "unknown", true},
 	}
 
@@ -41,7 +40,7 @@ func TestRegistry_List(t *testing.T) {
 	registry := NewRegistry()
 	targets := registry.List()
 
-	assert.GreaterOrEqual(t, len(targets), 4)
+	assert.Equal(t, 3, len(targets))
 }
 
 func TestRegistry_Names(t *testing.T) {
@@ -51,7 +50,6 @@ func TestRegistry_Names(t *testing.T) {
 	assert.Contains(t, names, "cursor")
 	assert.Contains(t, names, "kilo")
 	assert.Contains(t, names, "junie")
-	assert.Contains(t, names, "windsurf")
 }
 
 func TestTarget_Paths(t *testing.T) {
@@ -85,7 +83,7 @@ func TestDefaultRegistry(t *testing.T) {
 	assert.Equal(t, "Cursor", target.DisplayName)
 
 	targets := List()
-	assert.GreaterOrEqual(t, len(targets), 4)
+	assert.Equal(t, 3, len(targets))
 
 	names := Names()
 	assert.Contains(t, names, "cursor")

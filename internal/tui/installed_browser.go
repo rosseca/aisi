@@ -45,7 +45,7 @@ func NewInstalledBrowser(track *tracker.Tracker, target string) *InstalledBrowse
 		if len(installed.Skills) > 0 {
 			items := make([]InstalledItem, len(installed.Skills))
 			for i, s := range installed.Skills {
-				items[i] = InstalledItem{Name: s, Type: "skill"}
+				items[i] = InstalledItem{Name: s.Name, Type: "skill"}
 			}
 			sections = append(sections, InstalledSection{Title: "🛠️  SKILLS", Items: items})
 		}

@@ -13,6 +13,7 @@ type GitRunner interface {
 	GetRemoteURL(repoPath string) (string, error)
 	GetCurrentCommit(repoPath string) (string, error)
 	Checkout(repoPath, ref string) error
+	VerifyRepoAccess(url string) error
 }
 
 type DefaultGitRunner struct{}
@@ -80,6 +81,25 @@ func (g *DefaultGitRunner) Checkout(repoPath, ref string) error {
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git checkout failed: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
+// VerifyRepoAccess checks if a repository URL is accessible (public or accessible with current credentials)
+func (g *DefaultGitRunner) VerifyRepoAccess(url string) error {
+	cmd := exec.Command("git", "ls-remote", "--exit-code", "--heads", url)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errStr := stderr.String()
+		if strings.Contains(errStr, "Repository not found") || strings.Contains(errStr, "does not exist") {
+			return fmt.Errorf("repository not found or not accessible: %s", url)
+		}
+		if strings.Contains(errStr, "Authentication failed") || strings.Contains(errStr, "403") {
+			return fmt.Errorf("repository requires authentication: %s", url)
+		}
+		return fmt.Errorf("failed to access repository: %s: %w", errStr, err)
 	}
 	return nil
 }
