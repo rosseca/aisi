@@ -1,0 +1,7 @@
+{
+  "command": "echo",
+  "args": ["sample-mcp-server"],
+  "env": {
+    "SAMPLE_API_KEY": "${env:SAMPLE_API_KEY}"
+  }
+}

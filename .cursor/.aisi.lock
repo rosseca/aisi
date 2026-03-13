@@ -1,0 +1,11 @@
+{
+  "installedAt": "2026-03-13T14:49:18Z",
+  "repoURL": "git@github.com:rosseca/mau-shared-agent-intelligence.git",
+  "repoCommit": "f8f7710673807d962435dc156408d45ff686b59c",
+  "target": "cursor",
+  "assets": {
+    "rules": [
+      "typescript"
+    ]
+  }
+}

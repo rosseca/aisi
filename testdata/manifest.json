@@ -1,0 +1,65 @@
+{
+  "version": "1.0.0",
+  "rules": [
+    {
+      "name": "sample-rule",
+      "path": "rules/sample.mdc",
+      "description": "A sample rule for testing",
+      "alwaysApply": false
+    }
+  ],
+  "skills": [
+    {
+      "name": "sample-skill",
+      "path": "skills/sample-skill",
+      "description": "A sample skill for testing"
+    }
+  ],
+  "agents": [
+    {
+      "name": "sample-agent",
+      "path": "agents/sample-agent.md",
+      "description": "A sample subagent for testing",
+      "model": "fast"
+    }
+  ],
+  "hooks": [
+    {
+      "name": "sample-hook",
+      "configPath": "hooks/hooks.json",
+      "scriptsPath": "hooks/scripts",
+      "description": "A sample hook for testing"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "sample-mcp",
+      "path": "mcp/sample.json",
+      "description": "A sample MCP config for testing",
+      "env": {
+        "SAMPLE_API_KEY": {
+          "description": "Sample API key",
+          "required": true,
+          "secret": true
+        }
+      }
+    }
+  ],
+  "agentsMd": [
+    {
+      "name": "sample-agents-md",
+      "path": "agents-md/sample.md",
+      "description": "A sample AGENTS.md template for testing"
+    }
+  ],
+  "external": [
+    {
+      "name": "external-skill",
+      "type": "skill",
+      "repo": "github.com/example/external-skills",
+      "path": "my-skill",
+      "ref": "main",
+      "description": "An external skill reference for testing"
+    }
+  ]
+}

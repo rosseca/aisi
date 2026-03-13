@@ -1,0 +1,115 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: aisi
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: mau
+    main: ./cmd/aisi
+    binary: aisi
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/rosseca/aisi/internal/version.Version={{.Version}}
+      - -X github.com/rosseca/aisi/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/rosseca/aisi/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE*
+
+nfpms:
+  - id: packages
+    package_name: aisi
+    vendor: MAU
+    homepage: "https://github.com/rosseca/aisi"
+    maintainer: "MAU <mau@example.com>"
+    description: "AI Agent Assets Manager - manage rules, skills, and MCP configs across Cursor, Windsurf, Kilo, and more"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+    contents:
+      - src: ./README.md
+        dst: /usr/share/doc/aisi/README.md
+    rpm:
+      group: Applications/System
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: '^feat:'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^fix:'
+      order: 1
+    - title: 'Other'
+      order: 999
+
+# Disabled temporarily - requires homebrew-tap repo and HOMEBREW_TAP_TOKEN
+# homebrew_casks:
+#   - name: aisi
+#     repository:
+#       owner: rosseca
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+#     url:
+#       verified: github.com/rosseca/aisi
+#     homepage: "https://github.com/rosseca/aisi"
+#     description: "AI Agent Assets Manager - manage rules, skills, and MCP configs across Cursor, Windsurf, Kilo, and more"
+#     binaries:
+#       - aisi
+#     hooks:
+#       post:
+#         install: |
+#           if OS.mac?
+#             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/aisi"]
+#           end
+
+release:
+  github:
+    owner: rosseca
+    name: aisi
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"

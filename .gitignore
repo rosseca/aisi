@@ -1,0 +1,60 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Build directories
+/build/
+/dist/
+/bin/
+
+# Dependency directories (remove if using vendor/)
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Project-specific
+# Cache directory for aisi (user-specific)
+.aisi/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Debug files
+__debug_bin
+
+# Output of profiling
+cpu.prof
+mem.prof
+
+# Binary output (root only, not cmd/aisi/)
+/aisi

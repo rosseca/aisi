@@ -1,0 +1,15 @@
+---
+description: "A sample rule for testing purposes"
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Sample Rule
+
+This is a sample rule used for testing the MAU Intelligence CLI.
+
+## Guidelines
+
+- Follow Go conventions
+- Use meaningful variable names
+- Write tests for all functions
