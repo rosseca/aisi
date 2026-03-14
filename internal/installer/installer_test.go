@@ -299,7 +299,7 @@ func TestInstaller_InstallMCP(t *testing.T) {
 		Description: "Test MCP",
 	}
 
-	result, err := installer.InstallMCP(mcp, nil)
+	result, err := installer.InstallMCP(mcp, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.Success)
@@ -328,7 +328,7 @@ func TestInstaller_InstallMCP_Merge(t *testing.T) {
 		Description: "Test MCP",
 	}
 
-	result, err := installer.InstallMCP(mcp, nil)
+	result, err := installer.InstallMCP(mcp, nil, nil)
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 
@@ -417,7 +417,7 @@ func TestInstaller_InstallMCP_MissingCommand(t *testing.T) {
 		Description: "MCP with nonexistent command",
 	}
 
-	result, err := installer.InstallMCP(mcp, nil)
+	result, err := installer.InstallMCP(mcp, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.Success)
@@ -461,7 +461,7 @@ func TestInstaller_InstallMCP_HTTPWithEnvHeaders(t *testing.T) {
 		},
 	}
 
-	result, err := installer.InstallMCP(mcp, envVars)
+	result, err := installer.InstallMCP(mcp, envVars, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.Success)
@@ -510,7 +510,7 @@ func TestInstaller_InstallMCP_HTTPWithEnvRefHeaders(t *testing.T) {
 		},
 	}
 
-	result, err := installer.InstallMCP(mcp, envVars)
+	result, err := installer.InstallMCP(mcp, envVars, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.Success)

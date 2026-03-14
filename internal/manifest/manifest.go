@@ -30,9 +30,53 @@ type Rule struct {
 }
 
 type Skill struct {
-	Name        string `json:"name" yaml:"name"`
-	Path        string `json:"path" yaml:"path"`
-	Description string `json:"description" yaml:"description"`
+	Name        string              `json:"name" yaml:"name"`
+	Path        string              `json:"path" yaml:"path"`
+	Description string              `json:"description" yaml:"description"`
+	Command     string              `json:"command,omitempty" yaml:"command,omitempty"`      // Comando requerido
+	Install     *InstallConfig      `json:"install,omitempty" yaml:"install,omitempty"`      // Config de instalación
+}
+
+// InstallConfig defines how to install the required command per OS or globally
+type InstallConfig struct {
+	MacOS       *MacOSInstall `json:"macos,omitempty" yaml:"macos,omitempty"`
+	Linux       *LinuxInstall `json:"linux,omitempty" yaml:"linux,omitempty"`
+	Npm         *NpmInstall   `json:"npm,omitempty" yaml:"npm,omitempty"`              // npm global (multiplataforma)
+	PostInstall string        `json:"post_install,omitempty" yaml:"post_install,omitempty"` // Optional: command to run after successful installation
+}
+
+// MacOSInstall defines macOS-specific installation via brew
+type MacOSInstall struct {
+	Brew *BrewInstall `json:"brew,omitempty" yaml:"brew,omitempty"`
+}
+
+// BrewInstall defines brew package installation
+type BrewInstall struct {
+	Tap     string `json:"tap,omitempty" yaml:"tap,omitempty"`         // Optional: brew tap
+	Command string `json:"command" yaml:"command"`                     // Required: package name
+}
+
+// LinuxInstall defines Linux-specific installation via apt
+type LinuxInstall struct {
+	Apt *AptInstall `json:"apt,omitempty" yaml:"apt,omitempty"`
+}
+
+// AptInstall defines apt package installation
+type AptInstall struct {
+	Sources     []string `json:"sources,omitempty" yaml:"sources,omitempty"`     // Optional: apt sources
+	Command     string   `json:"command" yaml:"command"`                         // Required: package name
+	PostInstall string   `json:"post_install,omitempty" yaml:"post_install,omitempty"` // Optional: post-install command
+}
+
+// NpmPackage represents a single npm package to install
+type NpmPackage struct {
+	Package string `json:"package" yaml:"package"`                    // Required: npm package name
+	Version string `json:"version,omitempty" yaml:"version,omitempty"` // Optional: specific version (e.g., "^1.0.0", "latest")
+}
+
+// NpmInstall defines npm global package installation (multiplataforma)
+type NpmInstall struct {
+	Packages []NpmPackage `json:"packages" yaml:"packages"` // Required: list of npm packages to install
 }
 
 type Agent struct {
@@ -57,11 +101,40 @@ type EnvVarMeta struct {
 	HelpURL     string `json:"helpUrl,omitempty" yaml:"helpUrl,omitempty"`
 }
 
+type SkillRef struct {
+	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+	Repo string `json:"repo,omitempty" yaml:"repo,omitempty"`
+	Path string `json:"path,omitempty" yaml:"path,omitempty"`
+	Ref  string `json:"ref,omitempty" yaml:"ref,omitempty"`
+}
+
+// IsLocal devuelve true si es una referencia local (solo Name)
+func (s SkillRef) IsLocal() bool {
+	return s.Name != "" && s.Repo == ""
+}
+
+// IsExternal devuelve true si es una referencia externa (tiene Repo)
+func (s SkillRef) IsExternal() bool {
+	return s.Repo != ""
+}
+
+// PostInstallConfig define un comando a ejecutar después de instalar el MCP
+type PostInstallConfig struct {
+	Command     string            `json:"command" yaml:"command"`
+	Args        []string          `json:"args,omitempty" yaml:"args,omitempty"`
+	Env         map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
+	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
 type MCP struct {
 	Name        string                `json:"name" yaml:"name"`
 	Path        string                `json:"path" yaml:"path"`
 	Description string                `json:"description" yaml:"description"`
 	Env         map[string]EnvVarMeta `json:"env,omitempty" yaml:"env,omitempty"`
+	Skill       *SkillRef             `json:"skill,omitempty" yaml:"skill,omitempty"`
+	Command     string                `json:"command,omitempty" yaml:"command,omitempty"`
+	Install     *InstallConfig        `json:"install,omitempty" yaml:"install,omitempty"`
+	PostInstall *PostInstallConfig    `json:"postInstall,omitempty" yaml:"postInstall,omitempty"`
 }
 
 type AgentsMD struct {
@@ -71,13 +144,15 @@ type AgentsMD struct {
 }
 
 type External struct {
-	Name         string   `json:"name" yaml:"name"`
-	Type         string   `json:"type" yaml:"type"`
-	Repo         string   `json:"repo" yaml:"repo"`
-	Path         string   `json:"path" yaml:"path"`
-	Ref          string   `json:"ref,omitempty" yaml:"ref,omitempty"`
-	Description  string   `json:"description" yaml:"description"`
-	Requirements []string `json:"requirements,omitempty" yaml:"requirements,omitempty"`
+	Name         string          `json:"name" yaml:"name"`
+	Type         string          `json:"type" yaml:"type"`
+	Repo         string          `json:"repo" yaml:"repo"`
+	Path         string          `json:"path" yaml:"path"`
+	Ref          string          `json:"ref,omitempty" yaml:"ref,omitempty"`
+	Description  string          `json:"description" yaml:"description"`
+	Requirements []string        `json:"requirements,omitempty" yaml:"requirements,omitempty"`
+	Command      string          `json:"command,omitempty" yaml:"command,omitempty"`      // Comando requerido (opcional)
+	Install      *InstallConfig  `json:"install,omitempty" yaml:"install,omitempty"`      // Config de instalación (opcional)
 }
 
 type Manifest struct {
@@ -94,12 +169,12 @@ type Manifest struct {
 
 // VersionMismatchError is returned when CLI version is below minimum required
 type VersionMismatchError struct {
-	CurrentVersion string
+	CurrentVersion  string
 	RequiredVersion string
 }
 
 func (e *VersionMismatchError) Error() string {
-	return fmt.Sprintf("CLI version %s is below minimum required %s", 
+	return fmt.Sprintf("CLI version %s is below minimum required %s",
 		e.CurrentVersion, e.RequiredVersion)
 }
 
@@ -107,21 +182,21 @@ func (e *VersionMismatchError) Error() string {
 func parseVersion(v string) (major, minor, patch int, err error) {
 	v = strings.TrimPrefix(v, "v")
 	parts := strings.Split(v, ".")
-	
+
 	if len(parts) < 2 {
 		return 0, 0, 0, fmt.Errorf("invalid version format: %s", v)
 	}
-	
+
 	major, err = strconv.Atoi(parts[0])
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("invalid major version: %s", parts[0])
 	}
-	
+
 	minor, err = strconv.Atoi(parts[1])
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("invalid minor version: %s", parts[1])
 	}
-	
+
 	patch = 0
 	if len(parts) >= 3 {
 		patch, err = strconv.Atoi(parts[2])
@@ -129,7 +204,7 @@ func parseVersion(v string) (major, minor, patch int, err error) {
 			return 0, 0, 0, fmt.Errorf("invalid patch version: %s", parts[2])
 		}
 	}
-	
+
 	return major, minor, patch, nil
 }
 

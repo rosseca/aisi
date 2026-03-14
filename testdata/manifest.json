@@ -13,6 +13,70 @@
       "name": "sample-skill",
       "path": "skills/sample-skill",
       "description": "A sample skill for testing"
+    },
+    {
+      "name": "manifest",
+      "path": "skills/manifest",
+      "description": "Guide for creating and maintaining AISI manifest.yaml files with dependency management"
+    },
+    {
+      "name": "skill-with-deps",
+      "path": "skills/skill-with-deps",
+      "description": "Skill requiring npx command",
+      "command": "npx",
+      "install": {
+        "macos": {
+          "brew": {
+            "command": "node"
+          }
+        },
+        "linux": {
+          "apt": {
+            "command": "npm",
+            "post_install": "npm install -g npx"
+          }
+        }
+      }
+    },
+    {
+      "name": "skill-with-npm",
+      "path": "skills/skill-with-npm",
+      "description": "Skill using npm package (multiplatform)",
+      "command": "ng",
+      "install": {
+        "npm": {
+          "packages": [
+            { "package": "@angular/cli", "version": "^17.0.0" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "skill-with-postinstall",
+      "path": "skills/skill-with-postinstall",
+      "description": "Skill with generic post-install command",
+      "command": "eslint",
+      "install": {
+        "npm": {
+          "packages": [{ "package": "eslint" }]
+        },
+        "post_install": "eslint --init"
+      }
+    },
+    {
+      "name": "skill-with-multiple-npm",
+      "path": "skills/skill-with-multiple-npm",
+      "description": "Skill requiring multiple npm packages",
+      "command": "tsc",
+      "install": {
+        "npm": {
+          "packages": [
+            { "package": "typescript", "version": "^5.0.0" },
+            { "package": "ts-node" },
+            { "package": "@types/node" }
+          ]
+        }
+      }
     }
   ],
   "agents": [

@@ -940,11 +940,19 @@ func (a *App) handleInstall(items []AssetItem) tea.Cmd {
 		commit, _ := a.repoMgr.GetCurrentCommit()
 		repoURL := a.cfg.Repo.URL
 
+		// Set up progress callback to show dependency installation messages
+		inst.SetProgressCallback(func(msg string) {
+			// Send progress message to TUI - this will be processed by the Update loop
+			// We can't directly call tea.Cmd from here, but we can store the last message
+			// and it will be picked up on next render
+			a.installMsg = msg
+		})
+
 		successCount := 0
 		errors := []string{}
 
 		for i, item := range items {
-			// Update progress message - this won't show real-time in TUI but indicates activity
+			// Update progress message
 			a.installDone = i + 1
 			a.installMsg = fmt.Sprintf("Installing %s...", item.Name)
 
@@ -987,7 +995,7 @@ func (a *App) handleMCPInstall(mcp *manifest.MCP, envVars map[string]installer.E
 		successCount := 0
 
 		// Install the MCP with env vars first
-		result, err := inst.InstallMCP(mcp, envVars)
+		result, err := inst.InstallMCP(mcp, envVars, a.manifest)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", mcp.Name, err))
 		} else if result.Success {

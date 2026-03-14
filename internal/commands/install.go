@@ -584,9 +584,9 @@ func installAsset(inst *installer.Installer, track *tracker.Tracker, m *manifest
 		var err error
 
 		if installGlobal {
-			result, err = inst.InstallMCPGlobal(mcp, envVars)
+			result, err = inst.InstallMCPGlobal(mcp, envVars, m)
 		} else {
-			result, err = inst.InstallMCP(mcp, envVars)
+			result, err = inst.InstallMCP(mcp, envVars, m)
 		}
 
 		if err != nil {

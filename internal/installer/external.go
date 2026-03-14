@@ -4,10 +4,45 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/rosseca/aisi/internal/deps"
 	"github.com/rosseca/aisi/internal/manifest"
 )
 
 func (i *Installer) InstallExternal(ext *manifest.External) (*InstallResult, error) {
+	// Verificar dependencias del comando si están definidas (para skills externas también)
+	if ext.Type == "skill" && ext.Command != "" && ext.Install != nil {
+		depsMgr := deps.NewManager()
+		
+		// Pass progress callback to deps manager
+		if i.onProgress != nil {
+			depsMgr.SetProgressCallback(i.onProgress)
+		}
+
+		if !depsMgr.CheckCommand(ext.Command) {
+			// Comando no existe, intentar instalar
+			msg := fmt.Sprintf("📦 Installing dependency '%s' for external skill '%s'...", ext.Command, ext.Name)
+			if i.onProgress != nil {
+				i.onProgress(msg)
+			}
+			fmt.Println(msg)
+
+			if err := depsMgr.Install(ext.Install); err != nil {
+				return &InstallResult{
+					Name:    ext.Name,
+					Type:    manifest.AssetTypeSkill,
+					Success: false,
+					Error:   fmt.Errorf("failed to install dependency '%s': %w", ext.Command, err),
+				}, nil
+			}
+
+			successMsg := fmt.Sprintf("✓ Dependency '%s' installed successfully", ext.Command)
+			if i.onProgress != nil {
+				i.onProgress(successMsg)
+			}
+			fmt.Println(successMsg)
+		}
+	}
+
 	repoPath, err := i.repoMgr.EnsureExternalRepo(ext.Repo, ext.Ref)
 	if err != nil {
 		return &InstallResult{

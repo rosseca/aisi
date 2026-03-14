@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rosseca/aisi/internal/deps"
 	"github.com/rosseca/aisi/internal/manifest"
 	"github.com/rosseca/aisi/internal/repo"
 )
@@ -17,6 +18,40 @@ func (i *Installer) InstallSkill(skill *manifest.Skill) (*InstallResult, error) 
 			Success: false,
 			Error:   fmt.Errorf("target %s does not support skills", i.target.Name),
 		}, nil
+	}
+
+	// Verificar dependencias del comando si están definidas
+	if skill.Command != "" && skill.Install != nil {
+		depsMgr := deps.NewManager()
+		
+		// Pass progress callback to deps manager
+		if i.onProgress != nil {
+			depsMgr.SetProgressCallback(i.onProgress)
+		}
+
+		if !depsMgr.CheckCommand(skill.Command) {
+			// Comando no existe, intentar instalar
+			msg := fmt.Sprintf("📦 Installing dependency '%s' for skill '%s'...", skill.Command, skill.Name)
+			if i.onProgress != nil {
+				i.onProgress(msg)
+			}
+			fmt.Println(msg) // Also print for non-TUI usage
+			
+			if err := depsMgr.Install(skill.Install); err != nil {
+				return &InstallResult{
+					Name:    skill.Name,
+					Type:    manifest.AssetTypeSkill,
+					Success: false,
+					Error:   fmt.Errorf("failed to install dependency '%s': %w", skill.Command, err),
+				}, nil
+			}
+			
+			successMsg := fmt.Sprintf("✓ Dependency '%s' installed successfully", skill.Command)
+			if i.onProgress != nil {
+				i.onProgress(successMsg)
+			}
+			fmt.Println(successMsg) // Also print for non-TUI usage
+		}
 	}
 
 	destDir := i.target.SkillsPath(i.projectRoot)

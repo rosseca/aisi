@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-14
+
+### Added
+
+- **MCP Dependency Management** — because manually installing `uvx` or `npx` is so 2024
+  - Automatic detection and installation of required system commands
+  - Support for custom install scripts in MCP manifests
+  - Progress reporting during dependency installation
+- **Global MCP Installation** — install once, use everywhere
+  - `InstallMCPGlobal()` for system-wide MCP configuration
+  - Automatic backup of existing configs before modification
+- **MCP Post-Install Hooks** — because one command is never enough
+  - Run arbitrary commands after MCP installation
+  - Environment variable injection support
+- **Associated Skills for MCPs** — install the brain with the tool
+  - Skills can reference external repositories via `SkillRef`
+  - Automatic installation of companion skills alongside MCPs
+- **External Skill References** — `IsLocal()` and `InstallFromURL()` for skill mobility
+
+### Changed
+
+- **TUI Browser now fills your terminal** like it should have from day one
+  - Dynamic item count based on terminal height (no more arbitrary 15-item limit)
+  - Better reserved space calculation for scroll indicators and category headers
+- **Manifest v0.3** with expanded MCP schema
+  - New fields: `command`, `install`, `postInstall`, `skill`
+
+### Fixed
+
+- Added missing `strings` import in `mcp.go` (compilation fail, classic)
+- Browser scroll calculation now accounts for actual UI elements, not imaginary ones
+
 ## [0.2.0] - 2026-03-13
 
 ### Added
@@ -58,5 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.3.0]: https://github.com/rosseca/aisi/releases/tag/v0.3.0
 [0.2.0]: https://github.com/rosseca/aisi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rosseca/aisi/releases/tag/v0.1.0

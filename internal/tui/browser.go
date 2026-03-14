@@ -137,15 +137,16 @@ func (b *Browser) SetSize(width, height int) {
 	b.width = width
 	b.height = height
 	// Recalculate visible items
-	// Reserve space for: title(2) + padding(2) + help(1) + selected count(1) + focused item description(2)
-	reservedLines := 8
+	// Reserve space for:
+	//   Before items: initial \n(1) + title(1) + \n(1) + subtitle(1) + \n\n(2) = 6 lines
+	//   After items: \n(1) + selected count(1) + help(1) + \n(1) = 4 lines
+	//   Plus scroll indicators (2) and category headers (variable)
+	reservedLines := 11
 	b.visibleItems = height - reservedLines
 	if b.visibleItems < 4 {
 		b.visibleItems = 4 // Minimum
 	}
-	if b.visibleItems > 15 {
-		b.visibleItems = 15 // Maximum (reduced to account for expanded descriptions)
-	}
+	// No maximum limit - show as many as fit in the terminal
 }
 
 func (b *Browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -154,15 +155,16 @@ func (b *Browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		b.width = msg.Width
 		b.height = msg.Height
 		// Calculate visible items based on height
-		// Reserve space for: title(2) + padding(2) + help(1) + selected count(1) + focused desc(2)
-		reservedLines := 8
+		// Reserve space for:
+		//   Before items: initial \n(1) + title(1) + \n(1) + subtitle(1) + \n\n(2) = 6 lines
+		//   After items: \n(1) + selected count(1) + help(1) + \n(1) = 4 lines
+		//   Plus scroll indicators (2) and category headers (variable)
+		reservedLines := 11
 		b.visibleItems = b.height - reservedLines
 		if b.visibleItems < 4 {
 			b.visibleItems = 4 // Minimum
 		}
-		if b.visibleItems > 15 {
-			b.visibleItems = 15 // Maximum
-		}
+		// No maximum limit - show as many as fit in the terminal
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":

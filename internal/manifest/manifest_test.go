@@ -15,7 +15,7 @@ func TestLoad(t *testing.T) {
 
 	assert.Equal(t, "1.0.0", m.Version)
 	assert.Len(t, m.Rules, 1)
-	assert.Len(t, m.Skills, 1)
+	assert.Len(t, m.Skills, 6) // Includes skills with command dependencies
 	assert.Len(t, m.Agents, 1)
 	assert.Len(t, m.Hooks, 1)
 	assert.Len(t, m.MCP, 1)

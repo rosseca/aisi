@@ -99,15 +99,17 @@ type Installer struct {
 	repoMgr     *repo.Manager
 	target      *targets.Target
 	projectRoot string
+	onProgress  func(string) // Optional callback for progress messages
 }
 
 type InstallResult struct {
-	Name       string
-	Type       manifest.AssetType
-	Path       string // Destination path where the skill was installed
-	SourcePath string // Relative path within the source repo (for lock file)
-	Success    bool
-	Error      error
+	Name              string
+	Type              manifest.AssetType
+	Path              string // Destination path where the skill was installed
+	SourcePath        string // Relative path within the source repo (for lock file)
+	Success           bool
+	Error             error
+	AdditionalResults []*InstallResult // Results from associated installations (skills, post-install)
 }
 
 func New(repoMgr *repo.Manager, target *targets.Target, projectRoot string) *Installer {
@@ -126,6 +128,11 @@ func NewWithFS(repoMgr *repo.Manager, target *targets.Target, projectRoot string
 		target:      target,
 		projectRoot: projectRoot,
 	}
+}
+
+// SetProgressCallback sets a callback function for progress messages during installation
+func (i *Installer) SetProgressCallback(callback func(string)) {
+	i.onProgress = callback
 }
 
 func (i *Installer) EnsureConfigDir() error {
@@ -152,7 +159,8 @@ func (i *Installer) Install(m *manifest.Manifest, assetName string) (*InstallRes
 	case manifest.AssetTypeHook:
 		result, err = i.InstallHook(asset.(*manifest.Hook))
 	case manifest.AssetTypeMCP:
-		result, err = i.InstallMCP(asset.(*manifest.MCP), nil)
+		// Generic Install doesn't have access to manifest for skill resolution
+		result, err = i.InstallMCP(asset.(*manifest.MCP), nil, nil)
 	case manifest.AssetTypeAgentsMD:
 		result, err = i.InstallAgentsMD(asset.(*manifest.AgentsMD))
 	default:
