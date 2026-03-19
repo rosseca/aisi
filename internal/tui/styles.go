@@ -71,19 +71,16 @@ var (
 			Padding(1, 2)
 )
 
-const (
-	appName    = "AI Shared Intelligence"
-	appVersion = "v1.0.0"
-)
+const appName = "AI Shared Intelligence"
 
-func renderTitle(target string) string {
-	title := titleStyle.Render(appName + " " + appVersion)
+func renderTitle(target string, version string) string {
+	title := titleStyle.Render(appName + " " + version)
 	subtitle := subtitleStyle.Render("Target: " + target)
 	return title + "\n" + subtitle
 }
 
-func renderTitleWithRepo(target string, repoSource string) string {
-	title := titleStyle.Render(appName + " " + appVersion)
+func renderTitleWithRepo(target string, repoSource string, version string) string {
+	title := titleStyle.Render(appName + " " + version)
 	subtitle := subtitleStyle.Render("Target: " + target)
 	result := title + "\n" + subtitle
 	if repoSource != "" {
@@ -93,32 +90,3 @@ func renderTitleWithRepo(target string, repoSource string) string {
 	return result
 }
 
-// PixelDinoASCII returns the pixel art dinosaur
-func PixelDinoASCII() string {
-	return `
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@#?~~~~~~~~~~~~~~~~~~~~~~~~P@@@@@@@@@
-@@#J.:^::!.       ^^~  ^::~^  ^5&@@@@@@@
-@@P ^!...!:       !:7.^!  ^!    :?B@@@@@
-@@P .^:::.        .^: .~^:~~      :#@@@
-@@P                     ...       :#@@@
-@@P   ~P~ JY ^P7 ?5::5J           :B@@@
-@@GJJ?5@PJ&&J5@B?#@YY@P    :????JYP&@@@@
-@@P::.7#7:PG:!#J.5B^^B5    .....:~P@@@@@
-@@P   ... .. ... ..  ..           ^&@@@
-@@&5!^::::::::::::::::::::^:::::::~#@@@@
-@@@@@&&&&&&&&&&&&&&&&&&&&&&#?~~!7!!Y#@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@&Y~~!!^:7B@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@&Y?JYY775@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&BJ?YP?J&@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&@@@Y~P@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&@@@
-`
-}
-
-// PixelDinoStyle applies styling to the dinosaur
-func PixelDinoStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("42")).
-		MarginLeft(4)
-}

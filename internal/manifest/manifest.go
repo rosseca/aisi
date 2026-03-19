@@ -25,16 +25,18 @@ type Rule struct {
 	Name        string   `json:"name" yaml:"name"`
 	Path        string   `json:"path" yaml:"path"`
 	Description string   `json:"description" yaml:"description"`
+	Categories  []string `json:"categories,omitempty" yaml:"categories,omitempty"`
 	AlwaysApply bool     `json:"alwaysApply,omitempty" yaml:"alwaysApply,omitempty"`
 	Globs       []string `json:"globs,omitempty" yaml:"globs,omitempty"`
 }
 
 type Skill struct {
-	Name        string              `json:"name" yaml:"name"`
-	Path        string              `json:"path" yaml:"path"`
-	Description string              `json:"description" yaml:"description"`
-	Command     string              `json:"command,omitempty" yaml:"command,omitempty"`      // Comando requerido
-	Install     *InstallConfig      `json:"install,omitempty" yaml:"install,omitempty"`      // Config de instalación
+	Name        string         `json:"name" yaml:"name"`
+	Path        string         `json:"path" yaml:"path"`
+	Description string         `json:"description" yaml:"description"`
+	Categories  []string       `json:"categories,omitempty" yaml:"categories,omitempty"`
+	Command     string         `json:"command,omitempty" yaml:"command,omitempty"`
+	Install     *InstallConfig `json:"install,omitempty" yaml:"install,omitempty"`
 }
 
 // InstallConfig defines how to install the required command per OS or globally
@@ -80,17 +82,19 @@ type NpmInstall struct {
 }
 
 type Agent struct {
-	Name        string `json:"name" yaml:"name"`
-	Path        string `json:"path" yaml:"path"`
-	Description string `json:"description" yaml:"description"`
-	Model       string `json:"model,omitempty" yaml:"model,omitempty"`
+	Name        string   `json:"name" yaml:"name"`
+	Path        string   `json:"path" yaml:"path"`
+	Description string   `json:"description" yaml:"description"`
+	Categories  []string `json:"categories,omitempty" yaml:"categories,omitempty"`
+	Model       string   `json:"model,omitempty" yaml:"model,omitempty"`
 }
 
 type Hook struct {
-	Name        string `json:"name" yaml:"name"`
-	ConfigPath  string `json:"configPath" yaml:"configPath"`
-	ScriptsPath string `json:"scriptsPath" yaml:"scriptsPath"`
-	Description string `json:"description" yaml:"description"`
+	Name        string   `json:"name" yaml:"name"`
+	ConfigPath  string   `json:"configPath" yaml:"configPath"`
+	ScriptsPath string   `json:"scriptsPath" yaml:"scriptsPath"`
+	Description string   `json:"description" yaml:"description"`
+	Categories  []string `json:"categories,omitempty" yaml:"categories,omitempty"`
 }
 
 type EnvVarMeta struct {
@@ -130,6 +134,7 @@ type MCP struct {
 	Name        string                `json:"name" yaml:"name"`
 	Path        string                `json:"path" yaml:"path"`
 	Description string                `json:"description" yaml:"description"`
+	Categories  []string              `json:"categories,omitempty" yaml:"categories,omitempty"`
 	Env         map[string]EnvVarMeta `json:"env,omitempty" yaml:"env,omitempty"`
 	Skill       *SkillRef             `json:"skill,omitempty" yaml:"skill,omitempty"`
 	Command     string                `json:"command,omitempty" yaml:"command,omitempty"`
@@ -138,21 +143,23 @@ type MCP struct {
 }
 
 type AgentsMD struct {
-	Name        string `json:"name" yaml:"name"`
-	Path        string `json:"path" yaml:"path"`
-	Description string `json:"description" yaml:"description"`
+	Name        string   `json:"name" yaml:"name"`
+	Path        string   `json:"path" yaml:"path"`
+	Description string   `json:"description" yaml:"description"`
+	Categories  []string `json:"categories,omitempty" yaml:"categories,omitempty"`
 }
 
 type External struct {
-	Name         string          `json:"name" yaml:"name"`
-	Type         string          `json:"type" yaml:"type"`
-	Repo         string          `json:"repo" yaml:"repo"`
-	Path         string          `json:"path" yaml:"path"`
-	Ref          string          `json:"ref,omitempty" yaml:"ref,omitempty"`
-	Description  string          `json:"description" yaml:"description"`
-	Requirements []string        `json:"requirements,omitempty" yaml:"requirements,omitempty"`
-	Command      string          `json:"command,omitempty" yaml:"command,omitempty"`      // Comando requerido (opcional)
-	Install      *InstallConfig  `json:"install,omitempty" yaml:"install,omitempty"`      // Config de instalación (opcional)
+	Name         string         `json:"name" yaml:"name"`
+	Type         string         `json:"type" yaml:"type"`
+	Repo         string         `json:"repo" yaml:"repo"`
+	Path         string         `json:"path" yaml:"path"`
+	Ref          string         `json:"ref,omitempty" yaml:"ref,omitempty"`
+	Description  string         `json:"description" yaml:"description"`
+	Categories   []string       `json:"categories,omitempty" yaml:"categories,omitempty"`
+	Requirements []string       `json:"requirements,omitempty" yaml:"requirements,omitempty"`
+	Command      string         `json:"command,omitempty" yaml:"command,omitempty"`
+	Install      *InstallConfig `json:"install,omitempty" yaml:"install,omitempty"`
 }
 
 type Manifest struct {

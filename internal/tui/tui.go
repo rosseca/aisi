@@ -23,6 +23,7 @@ const (
 	StateWelcome State = iota // First run - show welcome and ask for repo
 	StateRepoSetup            // Ask for repository URL on first run
 	StateMainMenu
+	StateCategorySelect // Category selection before browsing
 	StateBrowser
 	StateInstalled
 	StateInstalledBrowser
@@ -47,6 +48,7 @@ type VersionMismatchMsg struct {
 type App struct {
 	state            State
 	mainMenu         *MainMenu
+	categoryBrowser  *CategoryBrowser
 	browser          *Browser
 	installedBrowser *InstalledBrowser
 	mcpEnvForm       *MCPEnvForm
@@ -97,7 +99,7 @@ func NewApp(cfg *config.Config, target *targets.Target, projectRoot string, conf
 
 	app := &App{
 		state:       StateMainMenu,
-		mainMenu:    NewMainMenu(target.DisplayName),
+		mainMenu:    NewMainMenu(target.DisplayName, version.Version),
 		cfg:         cfg,
 		target:      target,
 		projectRoot: projectRoot,
@@ -180,6 +182,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		if a.mainMenu != nil {
+			a.mainMenu.SetSize(a.width, a.height)
+		}
+		if a.categoryBrowser != nil {
+			a.categoryBrowser.SetSize(a.width, a.height)
+		}
 		if a.mcpEnvForm != nil {
 			a.mcpEnvForm.SetSize(a.width, a.height)
 		}
@@ -251,8 +259,23 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleMenuSelection(msg.Option)
 
 	case BrowserDoneMsg:
+		if a.categoryBrowser != nil && a.categoryBrowser.HasCategories() {
+			a.state = StateCategorySelect
+			return a, nil
+		}
 		a.state = StateMainMenu
 		return a, nil
+
+	case CategoryBrowserDoneMsg:
+		a.state = StateMainMenu
+		a.categoryBrowser = nil
+		return a, nil
+
+	case CategorySelectedMsg:
+		a.browser = NewBrowser(a.manifest, a.target, msg.Category)
+		a.browser.SetSize(a.width, a.height)
+		a.state = StateBrowser
+		return a, a.browser.Init()
 
 	case InstalledBrowserDoneMsg:
 		a.state = StateMainMenu
@@ -336,7 +359,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case TargetSwitchedMsg:
 		a.target = msg.Target
-		a.mainMenu = NewMainMenu(a.target.DisplayName)
+		a.mainMenu = NewMainMenu(a.target.DisplayName, version.Version)
 		a.state = StateMainMenu
 		return a, nil
 
@@ -369,6 +392,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newMenu, cmd := a.mainMenu.Update(msg)
 		a.mainMenu = newMenu.(*MainMenu)
 		return a, cmd
+
+	case StateCategorySelect:
+		if a.categoryBrowser != nil {
+			newCatBrowser, cmd := a.categoryBrowser.Update(msg)
+			a.categoryBrowser = newCatBrowser.(*CategoryBrowser)
+			return a, cmd
+		}
 
 	case StateBrowser:
 		if a.browser != nil {
@@ -419,7 +449,13 @@ func (a *App) handleMenuSelection(option MenuOption) (tea.Model, tea.Cmd) {
 			a.err = fmt.Errorf("repository not loaded")
 			return a, nil
 		}
-		a.browser = NewBrowser(a.manifest, a.target)
+		a.categoryBrowser = NewCategoryBrowser(a.manifest, a.target)
+		a.categoryBrowser.SetSize(a.width, a.height)
+		if a.categoryBrowser.HasCategories() {
+			a.state = StateCategorySelect
+			return a, a.categoryBrowser.Init()
+		}
+		a.browser = NewBrowser(a.manifest, a.target, CategoryAll)
 		a.browser.SetSize(a.width, a.height)
 		a.state = StateBrowser
 		return a, a.browser.Init()
@@ -495,6 +531,11 @@ func (a *App) View() string {
 	case StateMainMenu:
 		return a.renderMainMenu()
 
+	case StateCategorySelect:
+		if a.categoryBrowser != nil {
+			return a.categoryBrowser.View()
+		}
+
 	case StateBrowser:
 		if a.browser != nil {
 			return a.browser.View()
@@ -547,7 +588,7 @@ func (a *App) renderWelcome() string {
 		a.width = 80
 	}
 
-	title := titleStyle.Render("  🧠 AI Shared Intelligence v1.0.0  ")
+	title := titleStyle.Render("  🧠 AI Shared Intelligence " + version.Version + "  ")
 	boxWidth := a.width - 8
 	if boxWidth < 60 {
 		boxWidth = 60
@@ -662,7 +703,7 @@ func (a *App) renderRepoSetup() string {
 		a.width = 80
 	}
 
-	title := titleStyle.Render("  🧠 AI Shared Intelligence v1.0.0  ")
+	title := titleStyle.Render("  🧠 AI Shared Intelligence " + version.Version + "  ")
 	boxWidth := a.width - 8
 	if boxWidth < 60 {
 		boxWidth = 60
@@ -716,13 +757,8 @@ func (a *App) renderRepoSetup() string {
 }
 
 func (a *App) renderMainMenu() string {
-	// Add repo info to the main menu view
-	menuView := a.mainMenu.View()
-	// Replace the title section with our enhanced version
-	titleWithRepo := renderTitleWithRepo(a.target.DisplayName, a.repoSource)
-	// Simple string replacement - find the old title and replace
-	oldTitle := renderTitle(a.target.DisplayName)
-	return strings.Replace(menuView, oldTitle, titleWithRepo, 1)
+	// The menu now renders itself with proper centering and version
+	return a.mainMenu.View()
 }
 
 func (a *App) renderTargetSwitcher() string {
@@ -736,7 +772,7 @@ func (a *App) renderTargetSwitcher() string {
   [3] Junie (JetBrains)
 
 %s
-`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), helpStyle.Render("1-3: Select • Esc: Back"))
+`, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version), helpStyle.Render("1-3: Select • Esc: Back"))
 }
 
 
@@ -756,7 +792,7 @@ func (a *App) renderSettings() string {
     Active Target: %s
 
 %s
-`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), repoURL, a.cfg.Repo.Branch, a.cfg.ActiveTarget, helpStyle.Render("Esc: Back"))
+`, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version), repoURL, a.cfg.Repo.Branch, a.cfg.ActiveTarget, helpStyle.Render("Esc: Back"))
 }
 
 func (a *App) renderInstalling() string {
@@ -773,7 +809,7 @@ func (a *App) renderInstalling() string {
   %s
 
 %s
-`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), a.spinner.View(), progress, a.installMsg, helpStyle.Render("Please wait..."))
+`, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version), a.spinner.View(), progress, a.installMsg, helpStyle.Render("Please wait..."))
 }
 
 func (a *App) renderError() string {
@@ -792,7 +828,7 @@ func (a *App) renderError() string {
 |  %s
 |
 |%s
-|`, renderTitleWithRepo(a.target.DisplayName, a.repoSource),
+|`, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("⚠️  Installation Failed"),
 			errMsg,
 			helpStyle.Render("Esc: Back to menu • q: Quit"))
@@ -804,7 +840,7 @@ func (a *App) renderError() string {
 |  %s
 |
 |%s
-|`, renderTitleWithRepo(a.target.DisplayName, a.repoSource), errorStyle.Render("Error: "+errMsg), helpStyle.Render("Esc: Back • q: Quit"))
+|`, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version), errorStyle.Render("Error: "+errMsg), helpStyle.Render("Esc: Back • q: Quit"))
 }
 
 func (a *App) renderVersionError() string {
@@ -1169,7 +1205,7 @@ func (a *App) renderSkillURLForm() string {
 		a.width = 80
 	}
 
-	title := titleStyle.Render("  🧠 AI Shared Intelligence  ")
+	title := titleStyle.Render("  🧠 AI Shared Intelligence " + version.Version + "  ")
 	boxWidth := a.width - 8
 	if boxWidth < 60 {
 		boxWidth = 60

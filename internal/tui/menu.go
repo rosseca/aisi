@@ -25,23 +25,34 @@ type MainMenu struct {
 	cursor   int
 	selected MenuOption
 	target   string
+	width    int
+	height   int
+	version  string
 }
 
-func NewMainMenu(target string) *MainMenu {
+func NewMainMenu(target string, version string) *MainMenu {
 	return &MainMenu{
 		choices: []string{
-		"Browse & Install Assets",
-		"Install Skill from Repository",
-		"Find Skills Online (skills.sh)",
-		"View Installed",
+			"Browse & Install Assets",
+			"Install Skill from Repository",
+			"Find Skills Online (skills.sh)",
+			"View Installed",
 			"Update All",
 			"Switch Target",
 			"Settings",
 			"Exit",
 		},
-		cursor: 0,
-		target: target,
+		cursor:  0,
+		target:  target,
+		version: version,
+		width:   80,
+		height:  24,
 	}
+}
+
+func (m *MainMenu) SetSize(width, height int) {
+	m.width = width
+	m.height = height
 }
 
 func (m *MainMenu) Init() tea.Cmd {
@@ -76,12 +87,12 @@ func (m *MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *MainMenu) View() string {
-	// Left column: title + menu
-	var leftCol strings.Builder
+	// Build the menu content
+	var content strings.Builder
 
-	leftCol.WriteString("\n")
-	leftCol.WriteString(renderTitle(m.target))
-	leftCol.WriteString("\n\n")
+	content.WriteString("\n")
+	content.WriteString(renderTitle(m.target, m.version))
+	content.WriteString("\n\n")
 
 	for i, choice := range m.choices {
 		cursor := "  "
@@ -92,29 +103,23 @@ func (m *MainMenu) View() string {
 			style = selectedItemStyle
 		}
 
-		leftCol.WriteString(style.Render(cursor + choice))
-		leftCol.WriteString("\n")
+		content.WriteString(style.Render(cursor + choice))
+		content.WriteString("\n")
 	}
 
-	leftCol.WriteString("\n")
-	leftCol.WriteString(helpStyle.Render("↑/↓: Navigate • Enter: Select • q: Quit"))
+	content.WriteString("\n")
+	content.WriteString(helpStyle.Render("↑/↓: Navigate • Enter: Select • q: Quit"))
 
-	// Add padding to match dinosaur height (17 lines total)
-	currentLines := strings.Count(leftCol.String(), "\n")
-	targetLines := 17 // Height of the dinosaur
-	for i := currentLines; i < targetLines; i++ {
-		leftCol.WriteString("\n")
-	}
+	menuContent := content.String()
 
-	// Right column: dinosaur
-	rightCol := PixelDinoStyle().Render(PixelDinoASCII())
-
-	// Combine columns
-	return lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		leftCol.String(),
-		rightCol,
-	) + "\n"
+	// Center the menu in the terminal using Place
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		menuContent,
+	)
 }
 
 type MenuSelectedMsg struct {

@@ -12,29 +12,45 @@ import (
 type AssetItem struct {
 	Name        string
 	Description string
+	Categories  []string
 	Type        manifest.AssetType
 	IsExternal  bool
 	Selected    bool
 }
 
 type Browser struct {
-	items        []AssetItem
-	cursor       int
-	target       *targets.Target
-	manifest     *manifest.Manifest
-	width        int
-	height       int
-	visibleItems int // Calculated based on terminal height
+	items          []AssetItem
+	cursor         int
+	target         *targets.Target
+	manifest       *manifest.Manifest
+	categoryFilter string
+	width          int
+	height         int
+	visibleItems   int
 }
 
-func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
-	items := make([]AssetItem, 0)
+func NewBrowser(m *manifest.Manifest, target *targets.Target, categoryFilter string) *Browser {
+	if m == nil || target == nil {
+		return &Browser{
+			items:          make([]AssetItem, 0),
+			cursor:         0,
+			target:         target,
+			manifest:       m,
+			categoryFilter: categoryFilter,
+			width:          80,
+			height:         24,
+			visibleItems:   8,
+		}
+	}
+
+	allItems := make([]AssetItem, 0)
 
 	if target.RulesDir != "" {
 		for _, r := range m.Rules {
-			items = append(items, AssetItem{
+			allItems = append(allItems, AssetItem{
 				Name:        r.Name,
 				Description: r.Description,
+				Categories:  r.Categories,
 				Type:        manifest.AssetTypeRule,
 				IsExternal:  false,
 			})
@@ -43,9 +59,10 @@ func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
 
 	if target.SkillsDir != "" {
 		for _, s := range m.Skills {
-			items = append(items, AssetItem{
+			allItems = append(allItems, AssetItem{
 				Name:        s.Name,
 				Description: s.Description,
+				Categories:  s.Categories,
 				Type:        manifest.AssetTypeSkill,
 				IsExternal:  false,
 			})
@@ -53,9 +70,10 @@ func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
 
 		for _, e := range m.External {
 			if e.Type == "skill" {
-				items = append(items, AssetItem{
+				allItems = append(allItems, AssetItem{
 					Name:        e.Name,
 					Description: e.Description,
+					Categories:  e.Categories,
 					Type:        manifest.AssetTypeSkill,
 					IsExternal:  true,
 				})
@@ -65,9 +83,10 @@ func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
 
 	if target.AgentsDir != "" {
 		for _, a := range m.Agents {
-			items = append(items, AssetItem{
+			allItems = append(allItems, AssetItem{
 				Name:        a.Name,
 				Description: a.Description,
+				Categories:  a.Categories,
 				Type:        manifest.AssetTypeAgent,
 				IsExternal:  false,
 			})
@@ -75,9 +94,10 @@ func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
 
 		for _, e := range m.External {
 			if e.Type == "agent" {
-				items = append(items, AssetItem{
+				allItems = append(allItems, AssetItem{
 					Name:        e.Name,
 					Description: e.Description,
+					Categories:  e.Categories,
 					Type:        manifest.AssetTypeAgent,
 					IsExternal:  true,
 				})
@@ -87,9 +107,10 @@ func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
 
 	if target.HooksFile != "" {
 		for _, h := range m.Hooks {
-			items = append(items, AssetItem{
+			allItems = append(allItems, AssetItem{
 				Name:        h.Name,
 				Description: h.Description,
+				Categories:  h.Categories,
 				Type:        manifest.AssetTypeHook,
 				IsExternal:  false,
 			})
@@ -98,9 +119,10 @@ func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
 
 	if target.MCPFile != "" {
 		for _, mc := range m.MCP {
-			items = append(items, AssetItem{
+			allItems = append(allItems, AssetItem{
 				Name:        mc.Name,
 				Description: mc.Description,
+				Categories:  mc.Categories,
 				Type:        manifest.AssetTypeMCP,
 				IsExternal:  false,
 			})
@@ -109,24 +131,53 @@ func NewBrowser(m *manifest.Manifest, target *targets.Target) *Browser {
 
 	if target.SupportsAgentsMD {
 		for _, am := range m.AgentsMD {
-			items = append(items, AssetItem{
+			allItems = append(allItems, AssetItem{
 				Name:        am.Name,
 				Description: am.Description,
+				Categories:  am.Categories,
 				Type:        manifest.AssetTypeAgentsMD,
 				IsExternal:  false,
 			})
 		}
 	}
 
+	items := filterByCategory(allItems, categoryFilter)
+
 	return &Browser{
-		items:        items,
-		cursor:       0,
-		target:       target,
-		manifest:     m,
-		width:        80,
-		height:       24,
-		visibleItems: 8, // Default, will be recalculated on first render
+		items:          items,
+		cursor:         0,
+		target:         target,
+		manifest:       m,
+		categoryFilter: categoryFilter,
+		width:          80,
+		height:         24,
+		visibleItems:   8,
 	}
+}
+
+func filterByCategory(items []AssetItem, categoryFilter string) []AssetItem {
+	if categoryFilter == CategoryAll {
+		return items
+	}
+
+	filtered := make([]AssetItem, 0)
+	for _, item := range items {
+		if categoryFilter == CategoryOther {
+			// "Other" shows items with no categories
+			if len(item.Categories) == 0 {
+				filtered = append(filtered, item)
+			}
+		} else {
+			// Check if the item belongs to the selected category
+			for _, cat := range item.Categories {
+				if cat == categoryFilter {
+					filtered = append(filtered, item)
+					break
+				}
+			}
+		}
+	}
+	return filtered
 }
 
 func (b *Browser) Init() tea.Cmd {

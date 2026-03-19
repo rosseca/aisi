@@ -5,6 +5,7 @@
       "name": "sample-rule",
       "path": "rules/sample.mdc",
       "description": "A sample rule for testing",
+      "categories": ["Testing"],
       "alwaysApply": false
     }
   ],
@@ -12,17 +13,20 @@
     {
       "name": "sample-skill",
       "path": "skills/sample-skill",
-      "description": "A sample skill for testing"
+      "description": "A sample skill for testing",
+      "categories": ["Testing"]
     },
     {
       "name": "manifest",
       "path": "skills/manifest",
-      "description": "Guide for creating and maintaining AISI manifest.yaml files with dependency management"
+      "description": "Guide for creating and maintaining AISI manifest.yaml files with dependency management",
+      "categories": ["Documentation"]
     },
     {
       "name": "skill-with-deps",
       "path": "skills/skill-with-deps",
       "description": "Skill requiring npx command",
+      "categories": ["Frontend", "JavaScript"],
       "command": "npx",
       "install": {
         "macos": {
@@ -42,6 +46,7 @@
       "name": "skill-with-npm",
       "path": "skills/skill-with-npm",
       "description": "Skill using npm package (multiplatform)",
+      "categories": ["Frontend", "Angular"],
       "command": "ng",
       "install": {
         "npm": {
@@ -55,6 +60,7 @@
       "name": "skill-with-postinstall",
       "path": "skills/skill-with-postinstall",
       "description": "Skill with generic post-install command",
+      "categories": ["Frontend", "Linting"],
       "command": "eslint",
       "install": {
         "npm": {
@@ -67,6 +73,7 @@
       "name": "skill-with-multiple-npm",
       "path": "skills/skill-with-multiple-npm",
       "description": "Skill requiring multiple npm packages",
+      "categories": ["Frontend", "TypeScript"],
       "command": "tsc",
       "install": {
         "npm": {
@@ -84,6 +91,7 @@
       "name": "sample-agent",
       "path": "agents/sample-agent.md",
       "description": "A sample subagent for testing",
+      "categories": ["Testing"],
       "model": "fast"
     }
   ],
@@ -92,7 +100,8 @@
       "name": "sample-hook",
       "configPath": "hooks/hooks.json",
       "scriptsPath": "hooks/scripts",
-      "description": "A sample hook for testing"
+      "description": "A sample hook for testing",
+      "categories": ["Testing"]
     }
   ],
   "mcp": [
@@ -100,6 +109,7 @@
       "name": "sample-mcp",
       "path": "mcp/sample.json",
       "description": "A sample MCP config for testing",
+      "categories": ["Testing"],
       "env": {
         "SAMPLE_API_KEY": {
           "description": "Sample API key",
@@ -113,7 +123,8 @@
     {
       "name": "sample-agents-md",
       "path": "agents-md/sample.md",
-      "description": "A sample AGENTS.md template for testing"
+      "description": "A sample AGENTS.md template for testing",
+      "categories": ["Testing"]
     }
   ],
   "external": [
@@ -123,7 +134,8 @@
       "repo": "github.com/example/external-skills",
       "path": "my-skill",
       "ref": "main",
-      "description": "An external skill reference for testing"
+      "description": "An external skill reference for testing",
+      "categories": ["External"]
     }
   ]
 }
