@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-19
+### Added
+- Category filter for asset browser - assets can now be organized by categories
+- Support for multiple categories per asset (`categories` array in manifest)
+- New category selection screen before browsing assets
+- `categories` field added to all asset types (rules, skills, agents, MCPs, etc.)
+### Changed
+- Assets without categories appear in "Other" category
+- "All" category shows all available assets
+- Skip category selection if no categories defined in manifest
+
+
 ## [0.3.0] - 2026-03-14
 
 ### Added

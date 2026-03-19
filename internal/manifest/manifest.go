@@ -185,9 +185,15 @@ func (e *VersionMismatchError) Error() string {
 		e.CurrentVersion, e.RequiredVersion)
 }
 
-// parseVersion parses a semantic version string (e.g., "1.2.3") into comparable components
+// parseVersion parses a semantic version string (e.g., "1.2.3", "1.2.3-snapshot") into comparable components
 func parseVersion(v string) (major, minor, patch int, err error) {
 	v = strings.TrimPrefix(v, "v")
+
+	// Remove any suffix after '-' or '+' (e.g., "1.2.3-snapshot" -> "1.2.3")
+	if idx := strings.IndexAny(v, "-+"); idx != -1 {
+		v = v[:idx]
+	}
+
 	parts := strings.Split(v, ".")
 
 	if len(parts) < 2 {
@@ -217,14 +223,14 @@ func parseVersion(v string) (major, minor, patch int, err error) {
 
 // CheckCLIVersion compares current CLI version with minimum required version
 // Returns nil if current >= required, or VersionMismatchError if current < required
-// Special cases: "dev" version always passes (development builds)
+// Special cases: "dev", "snapshot" versions always pass (development builds)
 func (m *Manifest) CheckCLIVersion(currentVersion string) error {
 	if m.MinimumCLIVersion == "" {
 		return nil // No minimum version specified
 	}
 
-	// Dev builds always pass version check (for development/testing)
-	if currentVersion == "dev" || currentVersion == "" {
+	// Dev/snapshot builds always pass version check (for development/testing)
+	if currentVersion == "dev" || currentVersion == "" || strings.Contains(currentVersion, "snapshot") {
 		return nil
 	}
 
