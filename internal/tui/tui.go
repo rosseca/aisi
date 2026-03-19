@@ -150,7 +150,7 @@ func (a *App) loadRepo() tea.Msg {
 		return ErrorMsg{Err: err}
 	}
 
-	if err := mgr.EnsureMainRepo(); err != nil {
+	if err := mgr.UpdateMainRepo(); err != nil {
 		return ErrorMsg{Err: err}
 	}
 

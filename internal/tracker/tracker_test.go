@@ -269,8 +269,8 @@ func TestTracker_BackwardCompatibility(t *testing.T) {
   }
 }`
 
-	lockPath := filepath.Join(projectDir, targets.CursorTarget.ConfigDir, LockFileName)
-	err := os.MkdirAll(filepath.Dir(lockPath), 0755)
+	lockPath := filepath.Join(projectDir, LockFileName)
+	err := os.MkdirAll(projectDir, 0755)
 	require.NoError(t, err)
 
 	err = os.WriteFile(lockPath, []byte(oldLockContent), 0644)

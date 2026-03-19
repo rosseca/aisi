@@ -77,7 +77,7 @@ func New(projectRoot string, target *targets.Target) *Tracker {
 }
 
 func (t *Tracker) lockFilePath() string {
-	return filepath.Join(t.projectRoot, t.target.ConfigDir, LockFileName)
+	return filepath.Join(t.projectRoot, LockFileName)
 }
 
 func (t *Tracker) Load() (*LockFile, error) {

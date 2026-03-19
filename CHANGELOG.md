@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-03-19
+
+### Changed
+
+- **Auto-update repository cache on startup** — no more stale manifests
+  - TUI now runs `git pull` on the cached repository when loading
+  - Ensures users always see the latest assets without manual `aisi update`
+- **Lock file relocated to project root** — shared across all targets
+  - `.aisi.lock` now saved at project root instead of `.cursor/` or `.kilo/`
+  - Single source of truth for installed assets across all editor targets
+
 ## [0.4.0] - 2026-03-19
 ### Added
 - Category filter for asset browser - assets can now be organized by categories
@@ -102,6 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.4.1]: https://github.com/rosseca/aisi/releases/tag/v0.4.1
+[0.4.0]: https://github.com/rosseca/aisi/releases/tag/v0.4.0
 [0.3.0]: https://github.com/rosseca/aisi/releases/tag/v0.3.0
 [0.2.0]: https://github.com/rosseca/aisi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rosseca/aisi/releases/tag/v0.1.0
