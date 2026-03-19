@@ -21,8 +21,11 @@ import (
 
 var findSkillCmd = &cobra.Command{
 	Use:   "find skill [name]",
-	Short: "Search for skills in the public registry",
-	Long: `Search skills.sh registry and install from any repository.
+	Short: "Search for skills in the SkillsMP registry",
+	Long: `Search SkillsMP registry and install from any repository.
+
+Get your API key at: https://skillsmp.com/auth/login
+Set it with: aisi config set-skillsmp-key <api-key>
 
 Examples:
   aisi find skill                    # Interactive search
@@ -52,15 +55,25 @@ func runNonInteractiveSearch(query string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	skills, err := client.Search(ctx, query, 10)
+	skills, err := client.Search(ctx, query, 10, "") // Use API default sort
 	if err != nil {
+		// Provide helpful message for API key issues
+		if err.Error() == "SkillsMP API key not configured. Set it with: aisi config set-skillsmp-key <your-api-key>" {
+			fmt.Println("⚠️  SkillsMP API key not configured")
+			fmt.Println()
+			fmt.Println("To search skills, you need an API key from https://skillsmp.com/auth/login")
+			fmt.Println("Then set it with: aisi config set-skillsmp-key <your-api-key>")
+			fmt.Println()
+			fmt.Println("Or set the environment variable: export SKILLSMP_API_KEY=<your-api-key>")
+			return nil
+		}
 		return fmt.Errorf("search failed: %w", err)
 	}
 
 	if len(skills) == 0 {
 		fmt.Printf("No skills found for \"%s\"\n", query)
 		fmt.Println()
-		fmt.Println("Try a different search term or visit https://skills.sh")
+		fmt.Println("Try a different search term or visit https://skillsmp.com")
 		return nil
 	}
 
@@ -79,7 +92,7 @@ func runNonInteractiveSearch(query string) error {
 			fmt.Printf("  (%s)", installs)
 		}
 		fmt.Println()
-		fmt.Printf("    https://skills.sh/%s\n", skill.ID)
+		fmt.Printf("    https://skillsmp.com/s/%s\n", skill.ID)
 		fmt.Println()
 	}
 
@@ -90,31 +103,29 @@ func runNonInteractiveSearch(query string) error {
 
 // Interactive search model
 type searchModel struct {
-	textInput   textinput.Model
-	client      *registry.Client
-	query       string
-	skills      []registry.Skill
-	cursor      int
-	loading     bool
-	err         error
-	selected    *registry.Skill
-	lastSearch  time.Time
-	debounce    time.Duration
+	textInput textinput.Model
+	client    *registry.Client
+	query     string
+	skills    []registry.Skill
+	cursor    int
+	loading   bool
+	err       error
+	selected  *registry.Skill
+	sortBy    string // "stars" or "recent"
 }
 
 func initialSearchModel() searchModel {
 	ti := textinput.New()
-	ti.Placeholder = "Type to search skills..."
+	ti.Placeholder = "Type to search and press Enter..."
 	ti.Focus()
-	ti.CharLimit = 50
-	ti.Width = 40
+	ti.CharLimit = 100
+	ti.Width = 50
 
 	return searchModel{
-		textInput:  ti,
-		client:     registry.NewClient(),
-		cursor:     0,
-		debounce:   200 * time.Millisecond,
-		lastSearch: time.Now(),
+		textInput: ti,
+		client:    registry.NewClient(),
+		cursor:    0,
+		sortBy:    "stars", // Default sort by stars
 	}
 }
 
@@ -135,10 +146,19 @@ func (m searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyEnter:
-			if m.cursor < len(m.skills) {
+			// If we have results, Enter selects the current skill
+			if len(m.skills) > 0 && m.cursor < len(m.skills) {
 				m.selected = &m.skills[m.cursor]
 				return m, tea.Quit
 			}
+			// Otherwise, search with current query
+			query := m.textInput.Value()
+			if len(query) >= 2 {
+				m.loading = true
+				m.query = query
+				return m, performSearch(m.client, query, m.sortBy)
+			}
+			return m, nil
 
 		case tea.KeyUp:
 			if m.cursor > 0 {
@@ -151,6 +171,20 @@ func (m searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 			return m, nil
+
+		case tea.KeyCtrlS:
+			// Toggle sort mode between stars and recent
+			if m.sortBy == "stars" {
+				m.sortBy = "recent"
+			} else {
+				m.sortBy = "stars"
+			}
+			// Re-search with new sort order if there's a query
+			if len(m.query) >= 2 {
+				m.loading = true
+				return m, performSearch(m.client, m.query, m.sortBy)
+			}
+			return m, nil
 		}
 
 	case searchMsg:
@@ -161,46 +195,24 @@ func (m searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.err = nil
 			m.skills = msg.skills
-			if m.cursor >= len(m.skills) {
-				m.cursor = 0
-			}
+			m.cursor = 0
 		}
 		return m, nil
 	}
 
 	// Handle text input changes
-	oldQuery := m.textInput.Value()
 	var cmd tea.Cmd
 	m.textInput, cmd = m.textInput.Update(msg)
-	newQuery := m.textInput.Value()
-
-	// Trigger search on query change (with debounce)
-	if newQuery != oldQuery && len(newQuery) >= 2 {
-		m.loading = true
-		m.query = newQuery
-		return m, tea.Batch(
-			cmd,
-			debounceSearch(m.client, newQuery, m.debounce),
-		)
-	}
-
-	// Clear results if query is too short
-	if len(newQuery) < 2 && len(m.skills) > 0 {
-		m.skills = nil
-		m.cursor = 0
-	}
-
 	return m, cmd
 }
 
-func debounceSearch(client *registry.Client, query string, debounce time.Duration) tea.Cmd {
+func performSearch(client *registry.Client, query string, sortBy string) tea.Cmd {
 	return func() tea.Msg {
-		time.Sleep(debounce)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		skills, err := client.Search(ctx, query, 10)
+		// Search with limit of 50 results
+		skills, err := client.Search(ctx, query, 50, sortBy)
 		return searchMsg{skills: skills, err: err}
 	}
 }
@@ -208,9 +220,16 @@ func debounceSearch(client *registry.Client, query string, debounce time.Duratio
 func (m searchModel) View() string {
 	var s strings.Builder
 
-	// Title
+	// Title with sort indicator
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	s.WriteString(titleStyle.Render("🔍 Find Skills"))
+	sortStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	s.WriteString(titleStyle.Render("🔍 Find Skills on SkillsMP"))
+	// Show current sort mode
+	sortLabel := "⭐"
+	if m.sortBy == "recent" {
+		sortLabel = "🕐"
+	}
+	s.WriteString(" " + sortStyle.Render(sortLabel))
 	s.WriteString("\n\n")
 
 	// Search input
@@ -229,7 +248,7 @@ func (m searchModel) View() string {
 	} else if len(m.skills) == 0 {
 		if len(m.textInput.Value()) < 2 {
 			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-			s.WriteString(dimStyle.Render("Start typing to search (min 2 characters)"))
+			s.WriteString(dimStyle.Render("Type at least 2 characters and press Enter to search"))
 		} else {
 			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 			s.WriteString(dimStyle.Render("No skills found"))
@@ -238,7 +257,31 @@ func (m searchModel) View() string {
 	} else {
 		s.WriteString(fmt.Sprintf("Found %d result(s):\n\n", len(m.skills)))
 
-		for i, skill := range m.skills {
+		// Show visible results with scroll
+		// Calculate visible range (show up to 15 items at a time)
+		visibleCount := 15
+		if visibleCount > len(m.skills) {
+			visibleCount = len(m.skills)
+		}
+
+		startIdx := 0
+		if m.cursor >= visibleCount {
+			startIdx = m.cursor - visibleCount + 1
+		}
+		endIdx := startIdx + visibleCount
+		if endIdx > len(m.skills) {
+			endIdx = len(m.skills)
+		}
+
+		// Show scroll indicator if needed
+		if startIdx > 0 {
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+			s.WriteString(dimStyle.Render("  ▲ more above"))
+			s.WriteString("\n")
+		}
+
+		for i := startIdx; i < endIdx; i++ {
+			skill := m.skills[i]
 			cursor := "  "
 			if m.cursor == i {
 				cursor = "> "
@@ -264,11 +307,22 @@ func (m searchModel) View() string {
 			}
 			s.WriteString("\n")
 		}
+
+		// Show scroll indicator if needed
+		if endIdx < len(m.skills) {
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+			s.WriteString(dimStyle.Render("  ▼ more below"))
+			s.WriteString("\n")
+		}
 	}
 
 	s.WriteString("\n")
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	s.WriteString(helpStyle.Render("↑/↓: Navigate • Enter: Select • Esc: Cancel"))
+	sortHelp := "stars"
+	if m.sortBy == "recent" {
+		sortHelp = "recent"
+	}
+	s.WriteString(helpStyle.Render(fmt.Sprintf("↑/↓: Navigate • Enter: Select/Search • Ctrl+S: Sort (%s) • Esc: Cancel", sortHelp)))
 	s.WriteString("\n")
 
 	return s.String()
@@ -359,7 +413,7 @@ func installFoundSkill(skill *registry.Skill) error {
 
 	if result.Success {
 		fmt.Printf("✓ Installed %s to %s\n", skill.Name, result.Path)
-		fmt.Printf("\nView at: https://skills.sh/%s\n", skill.ID)
+		fmt.Printf("\nView at: https://skillsmp.com/s/%s\n", skill.ID)
 
 		// Record the installation with full source information
 		// Don't modify project repoURL/repoCommit when installing from external source

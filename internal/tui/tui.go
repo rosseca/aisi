@@ -36,13 +36,22 @@ const (
 	StateLoading
 	StateInstalling
 	StateError
-	StateVersionError // CLI version too old - requires update
+	StateVersionError  // CLI version too old - requires update
+	StateSkillsMPSetup // Ask for SkillsMP API key when not configured
 )
 
 // VersionMismatchMsg is sent when the CLI version is below minimum required
 type VersionMismatchMsg struct {
 	CurrentVersion  string
 	RequiredVersion string
+}
+
+// RepoUpdateStartedMsg is sent when the repository update begins
+type RepoUpdateStartedMsg struct{}
+
+// RepoUpdateProgressMsg is sent to update the loading message during repo update
+type RepoUpdateProgressMsg struct {
+	Message string
 }
 
 type App struct {
@@ -70,12 +79,18 @@ type App struct {
 	repoInputCursor int
 	repoInputError  string
 
+	// SkillsMP API key setup input
+	skillsmpInput       string
+	skillsmpInputCursor int
+	skillsmpInputError  string
+
 	// Version mismatch info
 	versionCurrent  string
 	versionRequired string
 
-	// Installation progress
+	// Loading/Installation progress
 	spinner       spinner.Model
+	loadingMsg    string // For repo update and other loading states
 	installMsg    string
 	installTotal  int
 	installDone   int
@@ -134,10 +149,8 @@ func (a *App) Init() tea.Cmd {
 	if a.isFirstRun {
 		return a.mainMenu.Init()
 	}
-	return tea.Batch(
-		a.mainMenu.Init(),
-		a.loadRepo,
-	)
+	// Start with repo update loading state
+	return a.startRepoUpdate()
 }
 
 func (a *App) loadRepo() tea.Msg {
@@ -177,6 +190,19 @@ func (a *App) loadRepo() tea.Msg {
 	}
 }
 
+// startRepoUpdate initiates the repo update flow with loading indicator
+func (a *App) startRepoUpdate() tea.Cmd {
+	return func() tea.Msg {
+		// Small delay to show the loading message before starting the work
+		return RepoUpdateStartedMsg{}
+	}
+}
+
+// doRepoUpdate performs the actual repository update
+func (a *App) doRepoUpdate() tea.Msg {
+	return a.loadRepo()
+}
+
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -208,8 +234,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case StateRepoSetup:
 			return a.handleRepoSetupInput(msg)
 
-		case StateSkillURLForm:
-			return a.handleSkillURLInput(msg)
+	case StateSkillURLForm:
+		return a.handleSkillURLInput(msg)
+
+	case StateSkillsMPSetup:
+		return a.handleSkillsMPSetupInput(msg)
 
 		case StateVersionError:
 			// Only allow 'q' or 'ctrl+c' to quit when version is outdated
@@ -235,10 +264,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.spinner, cmd = a.spinner.Update(msg)
 		return a, cmd
 
+	case RepoUpdateStartedMsg:
+		a.state = StateLoading
+		a.loadingMsg = "Updating repository cache..."
+		return a, tea.Batch(
+			a.spinner.Tick,
+			func() tea.Msg { return a.doRepoUpdate() },
+		)
+
 	case RepoLoadedMsg:
 		a.repoMgr = msg.Manager
 		a.manifest = msg.Manifest
-		return a, nil
+		a.state = StateMainMenu
+		// Initialize the menu now that we have the data
+		return a, a.mainMenu.Init()
 
 	case RepoNotConfiguredMsg:
 		a.err = fmt.Errorf("repository not configured. Run: aisi config set-repo <url>")
@@ -309,6 +348,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.state = StateFindSkill
 		a.skillDetail = nil
 		return a, nil
+
+	case SkillInstallMsg:
+		// Install skill directly from skill finder detail view
+		a.state = StateInstalling
+		a.installMsg = fmt.Sprintf("Installing %s...", msg.Skill.Name)
+		a.installTotal = 1
+		a.installDone = 0
+		return a, tea.Batch(
+			a.spinner.Tick,
+			a.handleRegistrySkillInstall(msg.Skill),
+		)
 
 	case SkillInstallErrorMsg:
 		a.err = msg.Err
@@ -471,6 +521,15 @@ func (a *App) handleMenuSelection(option MenuOption) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case MenuFindSkill:
+		// Check if API key is configured
+		if a.cfg.GetSkillsMPAPIKey() == "" {
+			// Show API key setup screen
+			a.skillsmpInput = ""
+			a.skillsmpInputCursor = 0
+			a.skillsmpInputError = ""
+			a.state = StateSkillsMPSetup
+			return a, nil
+		}
 		a.skillFinder = NewSkillFinder()
 		a.skillFinder.SetSize(a.width, a.height)
 		a.state = StateFindSkill
@@ -570,6 +629,9 @@ func (a *App) View() string {
 	case StateSettings:
 		return a.renderSettings()
 
+	case StateLoading:
+		return a.renderLoading()
+
 	case StateInstalling:
 		return a.renderInstalling()
 
@@ -578,6 +640,9 @@ func (a *App) View() string {
 
 	case StateVersionError:
 		return a.renderVersionError()
+
+	case StateSkillsMPSetup:
+		return a.renderSkillsMPSetup()
 	}
 
 	return ""
@@ -795,6 +860,16 @@ func (a *App) renderSettings() string {
 `, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version), repoURL, a.cfg.Repo.Branch, a.cfg.ActiveTarget, helpStyle.Render("Esc: Back"))
 }
 
+func (a *App) renderLoading() string {
+	return fmt.Sprintf(`
+%s
+
+  %s %s
+
+%s
+`, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version), a.spinner.View(), a.loadingMsg, helpStyle.Render("Please wait..."))
+}
+
 func (a *App) renderInstalling() string {
 	progress := ""
 	if a.installTotal > 0 {
@@ -841,6 +916,137 @@ func (a *App) renderError() string {
 |
 |%s
 |`, renderTitleWithRepo(a.target.DisplayName, a.repoSource, version.Version), errorStyle.Render("Error: "+errMsg), helpStyle.Render("Esc: Back • q: Quit"))
+}
+
+func (a *App) handleSkillsMPSetupInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEnter:
+		// Validate and save API key
+		if a.skillsmpInput == "" {
+			// Allow empty to skip - go back to main menu
+			a.state = StateMainMenu
+			return a, nil
+		}
+
+		// Save the API key
+		a.cfg.SetSkillsMPAPIKey(a.skillsmpInput)
+		if err := a.cfg.Save(); err != nil {
+			a.err = fmt.Errorf("failed to save config: %w", err)
+			a.state = StateError
+			return a, nil
+		}
+
+		// Now proceed to skill finder
+		a.skillFinder = NewSkillFinder()
+		a.skillFinder.SetSize(a.width, a.height)
+		a.state = StateFindSkill
+		return a, a.skillFinder.Init()
+
+	case tea.KeyBackspace:
+		if len(a.skillsmpInput) > 0 && a.skillsmpInputCursor > 0 {
+			a.skillsmpInput = a.skillsmpInput[:a.skillsmpInputCursor-1] + a.skillsmpInput[a.skillsmpInputCursor:]
+			a.skillsmpInputCursor--
+		}
+		return a, nil
+
+	case tea.KeyDelete:
+		if a.skillsmpInputCursor < len(a.skillsmpInput) {
+			a.skillsmpInput = a.skillsmpInput[:a.skillsmpInputCursor] + a.skillsmpInput[a.skillsmpInputCursor+1:]
+		}
+		return a, nil
+
+	case tea.KeyLeft:
+		if a.skillsmpInputCursor > 0 {
+			a.skillsmpInputCursor--
+		}
+		return a, nil
+
+	case tea.KeyRight:
+		if a.skillsmpInputCursor < len(a.skillsmpInput) {
+			a.skillsmpInputCursor++
+		}
+		return a, nil
+
+	case tea.KeyHome:
+		a.skillsmpInputCursor = 0
+		return a, nil
+
+	case tea.KeyEnd:
+		a.skillsmpInputCursor = len(a.skillsmpInput)
+		return a, nil
+
+	case tea.KeyCtrlC:
+		return a, tea.Quit
+
+	case tea.KeyEsc:
+		// Go back to main menu without saving
+		a.state = StateMainMenu
+		return a, nil
+
+	default:
+		// Insert character
+		if msg.Type == tea.KeyRunes {
+			a.skillsmpInput = a.skillsmpInput[:a.skillsmpInputCursor] + string(msg.Runes) + a.skillsmpInput[a.skillsmpInputCursor:]
+			a.skillsmpInputCursor += len(msg.Runes)
+			a.skillsmpInputError = "" // Clear error on input
+		}
+		return a, nil
+	}
+}
+
+func (a *App) renderSkillsMPSetup() string {
+	if a.width == 0 {
+		a.width = 80
+	}
+
+	title := titleStyle.Render("  🧠 AI Shared Intelligence " + version.Version + "  ")
+	boxWidth := a.width - 8
+	if boxWidth < 60 {
+		boxWidth = 60
+	}
+
+	content := "\n"
+	content += infoStyle.Render("🔑 SkillsMP API Key Setup") + "\n\n"
+	content += "To search skills from the SkillsMP registry, you need an API key.\n\n"
+	content += "Get your API key at:\n"
+	content += "  " + secondaryStyle.Render("https://skillsmp.com/auth/login") + "\n\n"
+
+	// Input field
+	inputStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Padding(0, 1).
+		Width(boxWidth - 10)
+
+	cursorChar := "█"
+	inputText := a.skillsmpInput
+	if a.skillsmpInputCursor <= len(inputText) {
+		inputText = inputText[:a.skillsmpInputCursor] + cursorChar + inputText[a.skillsmpInputCursor:]
+	}
+
+	content += "API Key (sk_live_...):\n"
+	content += inputStyle.Render(inputText) + "\n\n"
+
+	if a.skillsmpInputError != "" {
+		content += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("⚠ "+a.skillsmpInputError) + "\n\n"
+	}
+
+	content += dimStyle.Render("Press Enter to save • Esc: Skip • Ctrl+C: Quit")
+
+	box := boxStyle.Width(boxWidth).Render(content)
+
+	return lipgloss.Place(
+		a.width,
+		a.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(
+			lipgloss.Center,
+			title,
+			"",
+			box,
+		),
+	)
 }
 
 func (a *App) renderVersionError() string {
@@ -1304,11 +1510,16 @@ func (a *App) handleRegistrySkillInstall(skill registry.Skill) tea.Cmd {
 			}
 		}
 
+		// Validate source is not empty
+		if source == "" {
+			return SkillInstallErrorMsg{Err: fmt.Errorf("cannot determine skill source from ID: %s", skill.ID)}
+		}
+
 		// Parse URL
 		skillURLStr := fmt.Sprintf("%s@%s", source, skill.Name)
 		skillURL, err := repo.ParseSkillURL(skillURLStr)
 		if err != nil {
-			return SkillInstallErrorMsg{Err: fmt.Errorf("failed to parse skill URL: %w", err)}
+			return SkillInstallErrorMsg{Err: fmt.Errorf("failed to parse skill URL '%s': %w", skillURLStr, err)}
 		}
 
 		var repoMgr *repo.Manager

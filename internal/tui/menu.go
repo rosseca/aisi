@@ -35,7 +35,7 @@ func NewMainMenu(target string, version string) *MainMenu {
 		choices: []string{
 			"Browse & Install Assets",
 			"Install Skill from Repository",
-			"Find Skills Online (skills.sh)",
+			"Find Skills Online (SkillsMP)",
 			"View Installed",
 			"Update All",
 			"Switch Target",

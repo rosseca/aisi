@@ -55,6 +55,20 @@ Examples:
 	RunE: runConfigSetToken,
 }
 
+var configSetSkillsMPKeyCmd = &cobra.Command{
+	Use:   "set-skillsmp-key <api-key>",
+	Short: "Set SkillsMP API key for skill search",
+	Long: `Set your SkillsMP API key for searching skills in the registry.
+Get your API key at: https://skillsmp.com/auth/login
+
+You can also set it via environment variable: SKILLSMP_API_KEY
+
+Examples:
+  aisi config set-skillsmp-key sk_live_your_api_key_here`,
+	Args: cobra.ExactArgs(1),
+	RunE: runConfigSetSkillsMPKey,
+}
+
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show current configuration",
@@ -81,6 +95,7 @@ func init() {
 	configCmd.AddCommand(configSetRepoCmd)
 	configCmd.AddCommand(configSetTargetCmd)
 	configCmd.AddCommand(configSetTokenCmd)
+	configCmd.AddCommand(configSetSkillsMPKeyCmd)
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configInitCmd)
 }
@@ -144,6 +159,29 @@ func runConfigSetToken(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runConfigSetSkillsMPKey(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	apiKey := args[0]
+	cfg.SetSkillsMPAPIKey(apiKey)
+
+	if err := cfg.Save(); err != nil {
+		return err
+	}
+
+	// Mask the key for display
+	maskedKey := apiKey
+	if len(apiKey) > 8 {
+		maskedKey = apiKey[:4] + "..." + apiKey[len(apiKey)-4:]
+	}
+	fmt.Printf("SkillsMP API key saved: %s\n", maskedKey)
+	fmt.Println("You can now search skills with: aisi find skill <query>")
+	return nil
+}
+
 func runConfigShow(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -166,6 +204,14 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 		fmt.Println("HTTPS Token:     (configured)")
 	} else {
 		fmt.Println("HTTPS Token:     (not set)")
+	}
+
+	if cfg.SkillsMPAPIKey != "" {
+		fmt.Println("SkillsMP API:    (configured)")
+	} else if os.Getenv("SKILLSMP_API_KEY") != "" {
+		fmt.Println("SkillsMP API:    (set via env var)")
+	} else {
+		fmt.Println("SkillsMP API:    (not set - required for skill search)")
 	}
 
 	configDir, _ := config.ConfigDir()
@@ -287,6 +333,33 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
+	// Step 4: SkillsMP API Key (optional)
+	fmt.Println("Step 4: SkillsMP API Key (Optional)")
+	fmt.Println("------------------------------------")
+	fmt.Println("To search and install skills from the SkillsMP registry,")
+	fmt.Println("you need an API key. Get yours at: https://skillsmp.com/auth/login")
+	fmt.Println()
+	fmt.Println("Leave empty to skip (you can add it later with:")
+	fmt.Println("  aisi config set-skillsmp-key <api-key>)")
+	fmt.Println()
+
+	if cfg.SkillsMPAPIKey != "" {
+		fmt.Println("Current: (already configured)")
+	}
+	fmt.Print("SkillsMP API Key [press Enter to skip]: ")
+
+	skillsmpKey, _ := reader.ReadString('\n')
+	skillsmpKey = strings.TrimSpace(skillsmpKey)
+
+	if skillsmpKey != "" {
+		cfg.SetSkillsMPAPIKey(skillsmpKey)
+		fmt.Println("✓ SkillsMP API key saved")
+		fmt.Println()
+	} else {
+		fmt.Println("✓ Skipped (no API key)")
+		fmt.Println()
+	}
+
 	// Save configuration
 	if err := cfg.Save(); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
@@ -301,6 +374,9 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 	if cfg.HTTPSToken != "" {
 		fmt.Println("Token:       (configured)")
 	}
+	if cfg.SkillsMPAPIKey != "" {
+		fmt.Println("SkillsMP:    (configured)")
+	}
 	fmt.Println()
 
 	configDir, _ := config.ConfigDir()
@@ -309,6 +385,7 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Next steps:")
 	fmt.Println("  • Run 'aisi list' to see available assets")
+	fmt.Println("  • Run 'aisi find skill <query>' to search skills")
 	fmt.Println("  • Run 'aisi' for interactive mode")
 
 	return nil

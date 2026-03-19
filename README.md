@@ -124,11 +124,13 @@ aisi  # No arguments → interactive interface
 | `aisi install <name>...` | Install specific assets |
 | `aisi install --type=TYPE --all` | Install all of a type |
 | `aisi list [TYPE]` | List available assets |
+| `aisi find skill [query]` | Search skills in SkillsMP registry |
 | `aisi status` | Show installed assets in current project |
 | `aisi update` | Update installed assets to latest commit |
 | `aisi remove <name>...` | Remove installed assets |
 | `aisi config set-repo <url>` | Configure remote repo |
 | `aisi config set-target <target>` | Default target |
+| `aisi config set-skillsmp-key <key>` | Set SkillsMP API key |
 | `aisi config show` | Show current configuration |
 | `aisi version` | CLI version |
 
@@ -140,9 +142,42 @@ aisi  # No arguments → interactive interface
 | `--repo=URL` | Override repo for this execution |
 | `--force` | Force reinstall even if up to date |
 
+### Searching and Installing Skills from SkillsMP Registry
+
+AISI integrates with [SkillsMP](https://skillsmp.com) — a public registry of AI agent skills. Search and install skills from any repository:
+
+**Setup (one-time):**
+
+```bash
+# Get your API key at https://skillsmp.com/auth/login
+aisi config set-skillsmp-key sk_live_your_api_key_here
+```
+
+Or set via environment variable:
+```bash
+export SKILLSMP_API_KEY=sk_live_your_api_key_here
+```
+
+**Search skills:**
+
+```bash
+# Interactive search (TUI)
+aisi find skill
+
+# Non-interactive search
+aisi find skill typescript
+aisi find skill "react hooks"
+```
+
+**What you get:**
+- Search by keywords across all registered skills
+- See install counts and popularity
+- One-command installation from any GitHub repo
+- Automatic resolution of `owner/repo@skill-name` format
+
 ### Installing Skills from External Repositories
 
-You can install skills directly from any Git repository without needing to define them in your manifest first.
+You can also install skills directly from any Git repository without needing to define them in your manifest first.
 
 **From GitHub (shorthand):**
 
@@ -271,6 +306,18 @@ repo:
   url: "git@github.com:your-org/shared-ai-assets.git"
   branch: "main"
 activeTarget: cursor
+skillsmpApiKey: sk_live_your_api_key_here  # Optional, for skill search
+```
+
+**Configuration commands:**
+
+```bash
+aisi config set-repo <url>              # Set shared repository
+aisi config set-target <target>         # Set default target (cursor, kilo, junie)
+aisi config set-token <github-token>    # Set GitHub token for HTTPS
+aisi config set-skillsmp-key <key>      # Set SkillsMP API key for skill search
+aisi config show                        # Show current configuration
+aisi config init                        # Interactive setup
 ```
 
 ### Per project (`.aisi.lock`)

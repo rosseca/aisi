@@ -31,10 +31,11 @@ type CustomTarget struct {
 }
 
 type Config struct {
-	Repo          RepoConfig              `yaml:"repo"`
-	HTTPSToken    string                  `yaml:"httpsToken,omitempty"`
-	ActiveTarget  string                  `yaml:"activeTarget"`
-	CustomTargets map[string]CustomTarget `yaml:"customTargets,omitempty"`
+	Repo           RepoConfig              `yaml:"repo"`
+	HTTPSToken     string                  `yaml:"httpsToken,omitempty"`
+	SkillsMPAPIKey string                  `yaml:"skillsmpApiKey,omitempty"`
+	ActiveTarget   string                  `yaml:"activeTarget"`
+	CustomTargets  map[string]CustomTarget `yaml:"customTargets,omitempty"`
 }
 
 func DefaultConfig() *Config {
@@ -161,6 +162,17 @@ func (c *Config) GetToken() string {
 		return c.HTTPSToken
 	}
 	return os.Getenv("GITHUB_TOKEN")
+}
+
+func (c *Config) SetSkillsMPAPIKey(key string) {
+	c.SkillsMPAPIKey = key
+}
+
+func (c *Config) GetSkillsMPAPIKey() string {
+	if c.SkillsMPAPIKey != "" {
+		return c.SkillsMPAPIKey
+	}
+	return os.Getenv("SKILLSMP_API_KEY")
 }
 
 func (c *Config) IsConfigured() bool {
