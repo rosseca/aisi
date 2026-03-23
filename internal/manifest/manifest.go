@@ -185,9 +185,21 @@ func (e *VersionMismatchError) Error() string {
 		e.CurrentVersion, e.RequiredVersion)
 }
 
-// parseVersion parses a semantic version string (e.g., "1.2.3") into comparable components
+// parseVersion parses a semantic version string (e.g., "1.2.3") into comparable components.
+// Supports pre-release identifiers (e.g., "1.0.0-rc1", "0.4.1-snapshot") and build metadata (e.g., "1.2.3+build.123").
 func parseVersion(v string) (major, minor, patch int, err error) {
 	v = strings.TrimPrefix(v, "v")
+
+	// Strip build metadata (anything after +)
+	if idx := strings.Index(v, "+"); idx != -1 {
+		v = v[:idx]
+	}
+
+	// Strip pre-release identifiers (anything after -)
+	if idx := strings.Index(v, "-"); idx != -1 {
+		v = v[:idx]
+	}
+
 	parts := strings.Split(v, ".")
 
 	if len(parts) < 2 {
